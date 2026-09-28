@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-if (!process.env.GOOGLE_GENAI_API_KEY) {
-  throw new Error("GOOGLE_GENAI_API_KEY is not set in .env.local");
-}
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
+import { genAI } from "@/lib/gemini";
 
 const STRICT_VERIFICATION_PROMPT = `You are the STRICT Chief Document Verification Officer for NagrikSeva AI (Government of Gujarat).
 Your mandate: ZERO FRAUD, ZERO MISMATCH, STRICT QUALITY CONTROL. 
@@ -106,22 +100,24 @@ export async function POST(req: NextRequest) {
 
     const customPrompt = `${STRICT_VERIFICATION_PROMPT}\n\n====================\nEXPECTED DOCUMENT REQUIREMENT FOR THIS SLOT: "${expectedDocType}"\n====================`;
 
-    // Active Gemini vision models with high availability (BUG-008)
+    // Active Gemini vision models with high availability
     const visionModels = [
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
+      "gemini-1.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-pro",
     ];
     let parsedData: DocumentAnalysisResult | null = null;
 
-    for (const modelName of visionModels) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: "application/json",
-          },
-        });
+    if (genAI) {
+      for (const modelName of visionModels) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: "application/json",
+            },
+          });
 
         const result = await model.generateContent([
           customPrompt,
@@ -149,6 +145,7 @@ export async function POST(req: NextRequest) {
         console.warn(`Vision model ${modelName} failed or unavailable:`, msg);
       }
     }
+  }
 
     // Fallback if all Gemini models fail (e.g. temporary API quota issue)
     if (!parsedData) {

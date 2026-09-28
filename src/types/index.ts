@@ -51,6 +51,16 @@ export interface Message {
   role: "user" | "model";
   text: string;
   timestamp?: Date;
+  image?: string;
+  isVision?: boolean;
+}
+
+export interface SavedGuide {
+  id: string;
+  title: string;
+  content: string;
+  category?: string;
+  savedAt: string;
 }
 
 export interface ChatHistory {

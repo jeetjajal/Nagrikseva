@@ -1,9 +1,33 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Message, ChatHistory } from "@/types";
+import Link from "next/link";
+import { Message, ChatHistory, SavedGuide } from "@/types";
 import { SkeletonChatMessage } from "@/components/Skeleton";
-import { Mic, MicOff, Volume2, VolumeX, Send, Sparkles } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Send,
+  Sparkles,
+  Camera,
+  X,
+  Share2,
+  Copy,
+  Check,
+  Bookmark,
+  BookmarkCheck,
+  Phone,
+  MapPin,
+  Calculator,
+  Clock,
+  Trash2,
+  ExternalLink,
+  RotateCcw,
+  BookOpen,
+  VolumeCheck,
+} from "lucide-react";
 import { getStoredLanguage } from "@/lib/translation";
 
 const SPEECH_LANG_MAP: Record<string, string> = {
@@ -24,12 +48,125 @@ const SPEECH_LANG_MAP: Record<string, string> = {
   ne: "ne-NP",
 };
 
-const QUICK_SUGGESTIONS = [
-  "PM Kisan Yojana શું છે?",
-  "Ayushman Bharat કાર્ડ કેવી રીતે મળે?",
-  "Mudra Loan eligibility",
-  "રેશનકાર્ડમાં નામ ઉમેરવા શું જોઈએ?",
+// 1-Click Persona Discovery Options
+const PERSONAS = [
+  {
+    icon: "🌾",
+    label: "ખેડૂત મિત્ર",
+    sub: "સબસિડી & ૭/૧૨",
+    query: "હું ખેડૂત છું, મારા માટે સબસિડી, ખેતી સહાય અને ૭/૧૨ સંબંધિત યોજનાઓ જણાવો.",
+  },
+  {
+    icon: "👩",
+    label: "મહિલા / માતા",
+    sub: "વ્હાલી દીકરી & લોન",
+    query: "હું મહિલા છું, વ્હાલી દીકરી યોજના, ગંગા સ્વરૂપા સહાય અને મહિલા લોન યોજનાઓ જણાવો.",
+  },
+  {
+    icon: "👴",
+    label: "વરિષ્ઠ નાગરિક",
+    sub: "પેન્શન & આરોગ્ય",
+    query: "હું વરિષ્ઠ નાગરિક (૬૦+ વર્ષ) છું, વૃદ્ધ પેન્શન અને આયુષ્માન ભારત કાર્ડ વિશે માહિતી આપો.",
+  },
+  {
+    icon: "🎓",
+    label: "વિદ્યાર્થી",
+    sub: "શિષ્યવૃત્તિ & ટેબલેટ",
+    query: "હું વિદ્યાર્થી છું, સરકારી શિષ્યવૃત્તિ (Scholarship) અને ડિજિટલ ગુજરાત યોજનાઓ જણાવો.",
+  },
+  {
+    icon: "💼",
+    label: "વેપારી / યુવાન",
+    sub: "મુદ્રા લોન & સબસિડી",
+    query: "હું યુવાન/વેપારી છું, મુદ્રા લોન, સ્ટાર્ટઅપ સહાય અને સબસિડી યોજનાઓ જણાવો.",
+  },
+  {
+    icon: "🛠️",
+    label: "કારીગર / શ્રમિક",
+    sub: "માનવ ગરિમા કીટ",
+    query: "હું કારીગર/શ્રમિક છું, માનવ ગરિમા યોજના હેઠળ મફત સાધન કીટ અને ઈ-નિર્માણ કાર્ડ સહાય જણાવો.",
+  },
 ];
+
+// Quick Alternative Documents & Common Queries
+const QUICK_SUGGESTIONS = [
+  { text: "📸 મારો દસ્તાવેજ ચાલશે કે નહીં?", icon: "📸" },
+  { text: "📜 જન્મનો દાખલો નથી, તો કયો વૈકલ્પિક દસ્તાવેજ ચાલે?", icon: "🎂" },
+  { text: "🏥 આયુષ્માન ભારત કાર્ડના ₹૧૦ લાખ લાભ & હોસ્પિટલ", icon: "🏥" },
+  { text: "💵 આવકનો દાખલો નથી, તલાટી પંચનામું કેવી રીતે કરાવવું?", icon: "💵" },
+  { text: "🌾 AnyRoR પરથી ૭/૧૨ અને ૮-અ ઓનલાઇન કેવી રીતે કાઢવું?", icon: "🌾" },
+  { text: "🏠 લાઈટબિલ વગર સરનામા પુરાવા તરીકે શું ચાલે?", icon: "🏠" },
+  { text: "🚜 PM કિસાન સન્માન નિધિ ₹૬,૦૦૦ હપ્તો તપાસો", icon: "🚜" },
+  { text: "⚡ PM સૂર્યઘર યોજના ₹૭૮,૦૦૦ સબસિડી", icon: "⚡" },
+];
+
+function getOfficeStatus(): { text: string; color: string; dot: string; detail: string } {
+  // Current time in IST (UTC+5:30)
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const ist = new Date(utc + 3600000 * 5.5);
+
+  const day = ist.getDay(); // 0 = Sun, 6 = Sat
+  const date = ist.getDate();
+  const hours = ist.getHours();
+  const minutes = ist.getMinutes();
+  const timeVal = hours * 60 + minutes;
+
+  // Sunday
+  if (day === 0) {
+    return {
+      text: "કચેરી બંધ છે",
+      color: "text-red-100 bg-red-800/40 border-red-400/30",
+      dot: "bg-red-400",
+      detail: "રવિવાર જાહેર રજા (સોમવારે સવારે ૧૦:૩૦ કલાકે ખુલશે)",
+    };
+  }
+
+  // 2nd and 4th Saturday
+  if (day === 6) {
+    const isSecondSat = date >= 8 && date <= 14;
+    const isFourthSat = date >= 22 && date <= 28;
+    if (isSecondSat || isFourthSat) {
+      return {
+        text: "કચેરી બંધ છે",
+        color: "text-red-100 bg-red-800/40 border-red-400/30",
+        dot: "bg-red-400",
+        detail: "બીજો/ચોથો શનિવાર જાહેર રજા (સોમવારે સવારે ૧૦:૩૦ કલાકે ખુલશે)",
+      };
+    }
+  }
+
+  // Office timing: 10:30 AM (630 mins) to 6:10 PM (1090 mins)
+  const openTime = 10 * 60 + 30;
+  const closeTime = 18 * 60 + 10;
+  const lunchStart = 13 * 60 + 30; // 1:30 PM
+  const lunchEnd = 14 * 60; // 2:00 PM
+
+  if (timeVal >= lunchStart && timeVal < lunchEnd) {
+    return {
+      text: "ભોજન વિરામ (Lunch)",
+      color: "text-yellow-100 bg-yellow-800/40 border-yellow-400/30",
+      dot: "bg-yellow-400",
+      detail: "કચેરી લંચ બ્રેક: બપોરે ૨:૦૦ વાગ્યે પુનઃ શરૂ થશે",
+    };
+  }
+
+  if (timeVal >= openTime && timeVal < closeTime) {
+    return {
+      text: "કચેરી ચાલુ છે (Open)",
+      color: "text-emerald-100 bg-emerald-800/40 border-emerald-400/30",
+      dot: "bg-emerald-400 animate-pulse",
+      detail: "જન સેવા કેન્દ્ર & મામલતદાર કચેરી સાંજે ૬:૧૦ સુધી ખુલ્લી છે",
+    };
+  }
+
+  return {
+    text: "કચેરી બંધ છે",
+    color: "text-red-100 bg-red-800/40 border-red-400/30",
+    dot: "bg-red-400",
+    detail: "સરકારી કચેરી સમય: સોમ-શનિ સવારે ૧૦:૩૦ થી સાંજે ૬:૧૦",
+  };
+}
 
 function renderFormattedMessage(text: string) {
   const lines = text.split("\n");
@@ -91,7 +228,7 @@ export default function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      text: "નમસ્તે! 🙏 હું NagrikSeva AI છું.\n\nહું તમને સરકારી યોજનાઓ, પાત્રતા, નિયમો અને જરૂરી દસ્તાવેજો શોધવામાં મદદ કરીશ.\n\nતમે ગુજરાતી, હિન્દી કે અંગ્રેજીમાં બોલીને (Mic 🎙️) અથવા ટાઈપ કરીને પૂછી શકો છો! 🇮🇳",
+      text: "નમસ્તે! 🙏 હું NagrikSeva AI સહાયક છું.\n\nહું તમને સરકારી યોજનાઓ, નિયમો, જરૂરી દસ્તાવેજો અને **વૈકલ્પિક પુરાવા (Alternative Documents)** શોધવામાં મદદ કરીશ.\n\n📸 **દસ્તાવેજ ચકાસણી:** કેમેરા બટન દબાવી ફોટો મોકલો કે તમારો કાગળ ચાલશે કે નહીં!\n🎙️ **વોઈસ સપોર્ટ:** તમે બોલીને પણ પૂછી શકો છો. 🇮🇳",
       timestamp: new Date(),
     },
   ]);
@@ -99,20 +236,128 @@ export default function ChatBot() {
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState<number | null>(null);
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [savedGuides, setSavedGuides] = useState<SavedGuide[]>([]);
+  const [showSavedModal, setShowSavedModal] = useState<boolean>(false);
+  const [savedSearchQuery, setSavedSearchQuery] = useState<string>("");
+  const [attachedImage, setAttachedImage] = useState<{
+    base64: string;
+    mimeType: string;
+    fileName: string;
+  } | null>(null);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<{ stop: () => void; start: () => void; lang: string; continuous: boolean; interimResults: boolean; onstart: (() => void) | null; onresult: ((e: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<{
+    stop: () => void;
+    start: () => void;
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    onstart: (() => void) | null;
+    onresult: ((e: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null;
+    onerror: (() => void) | null;
+    onend: (() => void) | null;
+  } | null>(null);
   const isInitialMount = useRef<boolean>(true);
 
+  // Load Saved Guides & Auto-Speak settings from localStorage
   useEffect(() => {
-    // Never scroll on initial page mount/load
+    try {
+      const stored = localStorage.getItem("nagrikseva_saved_guides");
+      if (stored) {
+        setSavedGuides(JSON.parse(stored));
+      }
+      const storedAuto = localStorage.getItem("nagrikseva_auto_speak");
+      if (storedAuto === "true") {
+        setAutoSpeak(true);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  // Save Guides helper
+  const handleSaveGuide = (text: string) => {
+    try {
+      const titleMatch = text.match(/\*\*(.*?)\*\*/);
+      const title = titleMatch ? titleMatch[1] : text.slice(0, 40).replace(/\n/g, " ") + "...";
+
+      // Check if already saved
+      const existing = savedGuides.find((g) => g.content === text);
+      let updated: SavedGuide[];
+      if (existing) {
+        updated = savedGuides.filter((g) => g.id !== existing.id);
+      } else {
+        const newGuide: SavedGuide = {
+          id: "g_" + Date.now(),
+          title: title.slice(0, 60),
+          content: text,
+          savedAt: new Date().toLocaleDateString("gu-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }),
+        };
+        updated = [newGuide, ...savedGuides];
+      }
+      setSavedGuides(updated);
+      localStorage.setItem("nagrikseva_saved_guides", JSON.stringify(updated));
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const isGuideSaved = (text: string) => {
+    return savedGuides.some((g) => g.content === text);
+  };
+
+  const toggleAutoSpeak = () => {
+    const next = !autoSpeak;
+    setAutoSpeak(next);
+    try {
+      localStorage.setItem("nagrikseva_auto_speak", String(next));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleClearChat = () => {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setIsSpeaking(null);
+    setMessages([
+      {
+        role: "model",
+        text: "નવી વાતચીત શરૂ થઈ છે! 🙏 તમને કઈ સરકારી યોજના કે દસ્તાવેજમાં સહાય જોઈએ છે?",
+        timestamp: new Date(),
+      },
+    ]);
+  };
+
+  const handleCopyText = async (text: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleShareWhatsApp = (text: string) => {
+    const clean = text.replace(/[*#_~]/g, "");
+    const shareText = `🏛️ *NagrikSeva AI સરકારી માર્ગદર્શિકા:*\n\n${clean}\n\n📲 *તમામ સરકારી યોજનાઓ અને દસ્તાવેજ સહાય માટે મુલાકાત લો:* https://nagrikseva.gujarat.gov.in`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
+  useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
 
-    // Scroll ONLY the interior chat container, never the browser window
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTo({
         top: messagesContainerRef.current.scrollHeight,
@@ -120,6 +365,24 @@ export default function ChatBot() {
       });
     }
   }, [messages, loading]);
+
+  // Handle Photo / Document File Selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setAttachedImage({
+        base64,
+        mimeType: file.type || "image/jpeg",
+        fileName: file.name,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   // Voice Input (Speech to Text)
   const toggleListening = () => {
@@ -158,7 +421,6 @@ export default function ChatBot() {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
       setIsListening(false);
-      // Auto send speech input
       sendMessage(transcript);
     };
 
@@ -187,11 +449,12 @@ export default function ChatBot() {
     const cleanText = text.replace(/[*#_~]/g, ""); // strip markdown
     const utterance = new SpeechSynthesisUtterance(cleanText);
 
-    // Prefer matching language voice if available
     const voices = window.speechSynthesis.getVoices();
     const currentLang = getStoredLanguage();
     const targetTag = SPEECH_LANG_MAP[currentLang]?.slice(0, 2) || "gu";
-    const matchedVoice = voices.find((v) => v.lang.toLowerCase().startsWith(targetTag) || v.lang.includes("IN"));
+    const matchedVoice = voices.find(
+      (v) => v.lang.toLowerCase().startsWith(targetTag) || v.lang.includes("IN")
+    );
     if (matchedVoice) utterance.voice = matchedVoice;
 
     utterance.rate = 0.95;
@@ -204,40 +467,74 @@ export default function ChatBot() {
 
   const sendMessage = async (text?: string) => {
     const msg = (text ?? input).trim();
-    if (!msg || loading) return;
-    setInput("");
+    const currentImage = attachedImage;
+    if ((!msg && !currentImage) || loading) return;
 
-    const userMessage: Message = { role: "user", text: msg, timestamp: new Date() };
+    setInput("");
+    setAttachedImage(null);
+
+    const userMessage: Message = {
+      role: "user",
+      text: msg || (currentImage ? "📸 આ દસ્તાવેજનો ફોટો ચકાસો (Document Pre-Check)" : ""),
+      image: currentImage?.base64,
+      timestamp: new Date(),
+    };
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
     try {
       const firstUserIndex = messages.findIndex((m) => m.role === "user");
-      const history: ChatHistory[] = (firstUserIndex === -1 ? [] : messages.slice(firstUserIndex)).map((m) => ({
-        role: m.role,
-        parts: [{ text: m.text }],
-      }));
+      const history: ChatHistory[] = (firstUserIndex === -1 ? [] : messages.slice(firstUserIndex)).map(
+        (m) => ({
+          role: m.role,
+          parts: [{ text: m.text }],
+        })
+      );
 
       const currentLang = getStoredLanguage();
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history, language: currentLang }),
+        body: JSON.stringify({
+          message: userMessage.text,
+          history,
+          language: currentLang,
+          imageBase64: currentImage?.base64,
+          mimeType: currentImage?.mimeType,
+        }),
       });
 
       const data = await res.json();
+      const replyText = data.reply ?? data.error ?? "Something went wrong.";
+
+      setMessages((prev) => {
+        const newMsgs: Message[] = [
+          ...prev,
+          {
+            role: "model",
+            text: replyText,
+            isVision: data.isVision,
+            timestamp: new Date(),
+          },
+        ];
+
+        // If Auto-Speak is active, trigger audio readout for the new response
+        if (autoSpeak) {
+          setTimeout(() => {
+            speakMessage(replyText, newMsgs.length - 1);
+          }, 300);
+        }
+
+        return newMsgs;
+      });
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
           role: "model",
-          text: data.reply ?? data.error ?? "Something went wrong.",
+          text: "⚠️ જોડાણમાં ખામી આવી છે. કૃપા કરીને ફરી પ્રયાસ કરો.",
           timestamp: new Date(),
         },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "model", text: "⚠️ જોડાણમાં ખામી આવી છે. કૃપા કરીને ફરી પ્રયાસ કરો.", timestamp: new Date() },
       ]);
     } finally {
       setLoading(false);
@@ -247,33 +544,124 @@ export default function ChatBot() {
     }
   };
 
+  const office = getOfficeStatus();
+
+  const filteredGuides = savedGuides.filter(
+    (g) =>
+      g.title.toLowerCase().includes(savedSearchQuery.toLowerCase()) ||
+      g.content.toLowerCase().includes(savedSearchQuery.toLowerCase())
+  );
+
   return (
-    <div className="flex flex-col h-[580px] sm:h-[620px] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-      {/* ── Header ── */}
-      <div className="bg-gradient-to-r from-orange-500 to-green-600 p-3 sm:p-4 text-white flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-lg flex-shrink-0">
-            🤖
+    <div className="flex flex-col h-[640px] sm:h-[680px] bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden relative font-sans">
+      {/* ── Top Header ── */}
+      <div className="bg-gradient-to-r from-orange-600 via-orange-500 to-emerald-700 p-3.5 sm:p-4 text-white flex-shrink-0 shadow-md">
+        <div className="flex items-center justify-between gap-2">
+          {/* Logo & Identity */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl flex-shrink-0 shadow-inner border border-white/30">
+              🏛️
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h2 className="font-extrabold text-base leading-tight tracking-wide flex items-center gap-1">
+                  NagrikSeva AI <Sparkles size={14} className="text-yellow-300 fill-yellow-300" />
+                </h2>
+              </div>
+              <p className="text-[11px] text-orange-100 font-medium truncate">
+                સરકારી સહાયક • AI સ્કેનર & વૈકલ્પિક દસ્તાવેજ ગાઈડ
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 className="font-bold text-base leading-tight flex items-center gap-1.5">
-              NagrikSeva AI <Sparkles size={13} className="text-yellow-300" />
-            </h2>
-            <p className="text-xs text-orange-100 truncate">
-              સરકારી યોજના સહાયક (Voice & Multilingual Enabled)
-            </p>
+
+          {/* Quick Header Actions */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Auto-Speak Toggle */}
+            <button
+              onClick={toggleAutoSpeak}
+              title={
+                autoSpeak
+                  ? "ઓટો-અવાજ ચાલુ છે (નવો જવાબ આપોઆપ સંભળાશે)"
+                  : "ઓટો-અવાજ બંધ છે (ચાલુ કરવા ક્લિક કરો)"
+              }
+              className={`px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 border cursor-pointer ${
+                autoSpeak
+                  ? "bg-yellow-400 text-slate-900 border-yellow-300 shadow-xs scale-105"
+                  : "bg-white/15 text-white/90 border-white/25 hover:bg-white/25"
+              }`}
+            >
+              {autoSpeak ? <VolumeCheck size={13} /> : <Volume2 size={13} />}
+              <span className="hidden sm:inline">ઓટો-અવાજ</span>
+            </button>
+
+            {/* Saved Bookmarks Modal Button */}
+            <button
+              onClick={() => setShowSavedModal(true)}
+              title="મારી સાચવેલી માર્ગદર્શિકા (Saved Guides)"
+              className="relative p-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white transition cursor-pointer"
+            >
+              <Bookmark size={16} />
+              {savedGuides.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-yellow-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                  {savedGuides.length}
+                </span>
+              )}
+            </button>
+
+            {/* Reset Chat */}
+            <button
+              onClick={handleClearChat}
+              title="નવી વાતચીત શરૂ કરો (Reset)"
+              className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white transition cursor-pointer"
+            >
+              <RotateCcw size={16} />
+            </button>
           </div>
-          <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
-            <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse" />
-            <span className="text-xs text-white/80">Online</span>
+        </div>
+
+        {/* Live Office Timing Badge */}
+        <div className="mt-2.5 pt-2 border-t border-white/20 flex items-center justify-between text-[11px]">
+          <div
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] sm:text-[11px] font-bold ${office.color}`}
+            title={office.detail}
+          >
+            <span className={`w-2 h-2 rounded-full ${office.dot}`} />
+            <span>{office.text}</span>
           </div>
+          <a
+            href="tel:14567"
+            className="text-orange-100 hover:text-white font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded-md transition"
+            title="ગુજરાત સીએમ હેલ્પલાઇન ટોલ ફ્રી કોલ કરો"
+          >
+            <Phone size={11} className="text-yellow-300" />
+            <span>હેલ્પલાઇન: 14567</span>
+          </a>
         </div>
       </div>
 
-      {/* ── Messages ── */}
+      {/* ── 1-Click Persona Bar ("હું કોણ છું?") ── */}
+      <div className="bg-slate-100/80 border-b border-gray-200 px-3 py-2 flex-shrink-0 overflow-x-auto scrollbar-hide">
+        <div className="flex items-center gap-2 min-w-max">
+          <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+            👤 હું કોણ છું?
+          </span>
+          {PERSONAS.map((p, idx) => (
+            <button
+              key={idx}
+              onClick={() => sendMessage(p.query)}
+              className="flex items-center gap-1.5 text-xs bg-white text-slate-800 hover:text-orange-600 border border-slate-300/80 hover:border-orange-400 rounded-xl px-2.5 py-1 shadow-xs hover:shadow transition active:scale-95 cursor-pointer font-bold"
+            >
+              <span>{p.icon}</span>
+              <span>{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Messages Container ── */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50 overscroll-contain"
+        className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 bg-gradient-to-b from-gray-50 to-white overscroll-contain"
       >
         {messages.map((msg, i) => (
           <div
@@ -281,70 +669,208 @@ export default function ChatBot() {
             className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
           >
             <div
-              className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm relative group ${
+              className={`max-w-[90%] sm:max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm relative group ${
                 msg.role === "user"
-                  ? "bg-orange-500 text-white rounded-br-none"
-                  : "bg-white text-gray-800 rounded-bl-none border border-gray-100"
+                  ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-br-xs shadow-orange-500/20"
+                  : "bg-white text-slate-800 rounded-bl-xs border border-gray-200 shadow-slate-200/50"
               }`}
             >
+              {/* Attached Image inside Chat Message */}
+              {msg.image && (
+                <div className="mb-2.5 overflow-hidden rounded-xl border border-white/30 shadow-xs max-w-[220px]">
+                  <img
+                    src={msg.image}
+                    alt="Uploaded Document"
+                    className="w-full h-auto object-cover max-h-44 rounded-lg bg-black/10"
+                  />
+                  <div className="bg-black/50 text-white text-[10px] px-2 py-0.5 flex items-center gap-1 font-medium">
+                    <Camera size={11} /> <span>દસ્તાવેજ ફોટો ચકાસણી</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Message Text Content */}
               {msg.role === "model" ? renderFormattedMessage(msg.text) : msg.text}
 
-              {/* Audio Listen Button for AI response */}
+              {/* Action Toolkit for AI responses */}
               {msg.role === "model" && (
-                <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between">
-                  <span className="text-[10px] text-gray-400">નાગરિકસેવા અવાજ</span>
-                  <button
-                    onClick={() => speakMessage(msg.text, i)}
-                    title={isSpeaking === i ? "અવાજ બંધ કરો" : "સાંભળો (Listen)"}
-                    className="inline-flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md font-medium transition"
-                  >
-                    {isSpeaking === i ? (
-                      <>
-                        <VolumeX size={12} className="text-red-500" /> બંધ કરો
-                      </>
-                    ) : (
-                      <>
-                        <Volume2 size={12} /> સાંભળો 🔊
-                      </>
-                    )}
-                  </button>
+                <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-1.5">
+                  {/* Left Group: Audio & Action Tools */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Audio Listen / Stop */}
+                    <button
+                      onClick={() => speakMessage(msg.text, i)}
+                      title={isSpeaking === i ? "અવાજ બંધ કરો" : "સાંભળો (Listen in Gujarati)"}
+                      className="inline-flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-orange-200/60"
+                    >
+                      {isSpeaking === i ? (
+                        <>
+                          <VolumeX size={12} className="text-red-500" /> બંધ કરો
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 size={12} /> સાંભળો 🔊
+                        </>
+                      )}
+                    </button>
+
+                    {/* WhatsApp Share */}
+                    <button
+                      onClick={() => handleShareWhatsApp(msg.text)}
+                      title="વોટ્સએપ પર શૅર કરો (WhatsApp Share)"
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-emerald-200/60"
+                    >
+                      <Share2 size={12} className="text-emerald-600" />
+                      <span>WhatsApp</span>
+                    </button>
+
+                    {/* Copy to Clipboard */}
+                    <button
+                      onClick={() => handleCopyText(msg.text, i)}
+                      title="માહિતી કોપી કરો"
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-slate-200"
+                    >
+                      {copiedIndex === i ? (
+                        <>
+                          <Check size={12} className="text-emerald-600" /> કોપી થયું!
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} /> કોપી
+                        </>
+                      )}
+                    </button>
+
+                    {/* Bookmark / Save Offline Guide */}
+                    <button
+                      onClick={() => handleSaveGuide(msg.text)}
+                      title={
+                        isGuideSaved(msg.text)
+                          ? "સાચવેલમાંથી દૂર કરો"
+                          : "આ માર્ગદર્શિકા સાચવો (Bookmark Guide)"
+                      }
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg font-bold transition cursor-pointer border ${
+                        isGuideSaved(msg.text)
+                          ? "bg-amber-100 text-amber-900 border-amber-300"
+                          : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      {isGuideSaved(msg.text) ? (
+                        <>
+                          <BookmarkCheck size={12} className="text-amber-600 fill-amber-500" /> સાચવેલ
+                        </>
+                      ) : (
+                        <>
+                          <Bookmark size={12} /> સાચવો
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Right Group: Direct Portals/Actions */}
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      href="/locator"
+                      className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md font-bold transition border border-blue-200"
+                      title="નજીકની સરકારી કચેરી શોધો"
+                    >
+                      <MapPin size={10} /> કચેરી
+                    </Link>
+                    <Link
+                      href="/eligibility"
+                      className="inline-flex items-center gap-0.5 text-[10px] text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md font-bold transition border border-purple-200"
+                      title="યોજના પાત્રતા કેલ્ક્યુલેટર"
+                    >
+                      <Calculator size={10} /> લાભ ગણો
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         ))}
 
-        {/* Skeleton while loading */}
+        {/* Loading Skeleton */}
         {loading && <SkeletonChatMessage />}
       </div>
 
-      {/* ── Quick Suggestions ── */}
+      {/* ── Quick Alternative Document Suggestions ── */}
       {messages.length <= 2 && !loading && (
-        <div className="px-3 py-2 bg-white border-t border-gray-100 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
-          {QUICK_SUGGESTIONS.map((s) => (
+        <div className="px-3 py-2 bg-slate-50 border-t border-gray-200 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
+          {QUICK_SUGGESTIONS.map((s, idx) => (
             <button
-              key={s}
-              onClick={() => sendMessage(s)}
-              className="flex-shrink-0 text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-full px-3 py-1.5 hover:bg-orange-100 active:scale-95 transition whitespace-nowrap"
+              key={idx}
+              onClick={() => sendMessage(s.text)}
+              className="flex-shrink-0 text-xs bg-white text-orange-700 border border-orange-200 hover:border-orange-400 rounded-full px-3 py-1.5 hover:bg-orange-50 font-bold active:scale-95 transition whitespace-nowrap cursor-pointer shadow-xs flex items-center gap-1"
             >
-              {s}
+              <span>{s.icon}</span>
+              <span>{s.text}</span>
             </button>
           ))}
         </div>
       )}
 
-      {/* ── Input + Voice Controls ── */}
+      {/* ── Attached Image Preview Bar ── */}
+      {attachedImage && (
+        <div className="px-3 sm:px-4 py-2.5 bg-orange-50 border-t border-orange-200 flex items-center justify-between gap-2 animate-in fade-in duration-200 flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src={attachedImage.base64}
+              alt="Attached Preview"
+              className="w-11 h-11 object-cover rounded-xl border-2 border-orange-300 shrink-0 shadow-sm"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-orange-950 truncate flex items-center gap-1">
+                <Camera size={13} className="text-orange-600 shrink-0" />
+                <span>{attachedImage.fileName || "દસ્તાવેજ ફોટો"}</span>
+              </p>
+              <p className="text-[10px] text-orange-700 font-medium truncate">
+                AI ચકાસણી અને વૈકલ્પિક દસ્તાવેજ સલાહ માટે તૈયાર
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAttachedImage(null)}
+            className="p-1.5 rounded-full text-orange-700 hover:bg-orange-200/70 transition shrink-0 cursor-pointer"
+            title="દસ્તાવેજ હટાવો"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Input + Camera + Voice Controls ── */}
       <div className="p-3 sm:p-4 bg-white border-t border-gray-200 flex-shrink-0">
         <div className="flex gap-2 items-center">
+          {/* Hidden File Input for Camera / Image Upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            className="hidden"
+          />
+
+          {/* Camera / Photo Upload Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="દસ્તાવેજનો ફોટો પાડો અથવા અપલોડ કરો (Camera / Photo Check)"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-orange-600 transition flex-shrink-0 cursor-pointer active:scale-95 border border-slate-200"
+          >
+            <Camera size={18} />
+          </button>
+
           {/* Microphone button */}
           <button
             type="button"
             onClick={toggleListening}
-            title={isListening ? "Listening... Click to stop" : "બોલીને પૂછો (Speak in Gujarati)"}
-            className={`p-2.5 rounded-xl transition flex-shrink-0 ${
+            title={isListening ? "રેકોર્ડિંગ રોકો" : "બોલીને પૂછો (Speak in Gujarati)"}
+            className={`p-2.5 rounded-xl transition flex-shrink-0 cursor-pointer border ${
               isListening
-                ? "bg-red-500 text-white animate-pulse"
-                : "bg-gray-100 hover:bg-orange-100 text-gray-600 hover:text-orange-600"
+                ? "bg-red-500 text-white animate-pulse border-red-600"
+                : "bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-orange-600 border-slate-200"
             }`}
           >
             {isListening ? <MicOff size={18} /> : <Mic size={18} />}
@@ -359,6 +885,8 @@ export default function ChatBot() {
             placeholder={
               isListening
                 ? "સાંભળી રહ્યું છે... બોલો (Listening in Gujarati)..."
+                : attachedImage
+                ? "આ દસ્તાવેજ વિશે કંઈ પૂછવું છે? (અથવા સીધું મોકલો)..."
                 : "ગુજરાતી, હિન્દી કે અંગ્રેજીમાં લખો અથવા બોલો..."
             }
             className="flex-1 min-w-0 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder:text-gray-400"
@@ -367,8 +895,8 @@ export default function ChatBot() {
 
           <button
             onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
-            className="flex-shrink-0 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-medium transition active:scale-95 flex items-center gap-1.5"
+            disabled={loading || (!input.trim() && !attachedImage)}
+            className="flex-shrink-0 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-bold transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-md shadow-orange-500/20"
           >
             <Send size={15} />
             <span className="hidden sm:inline">મોકલો</span>
@@ -381,6 +909,114 @@ export default function ChatBot() {
           </p>
         )}
       </div>
+
+      {/* ── Saved Pocket Guides Modal (ઓફલાઇન સેવ) ── */}
+      {showSavedModal && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 flex flex-col max-h-[90%] overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-emerald-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen size={20} className="text-yellow-300" />
+                <div>
+                  <h3 className="font-bold text-base leading-tight">
+                    મારી સાચવેલી માર્ગદર્શિકા (Saved Guides)
+                  </h3>
+                  <p className="text-[11px] text-orange-100">
+                    ઇન્ટરનેટ વિના પણ ઉપલબ્ધ ({savedGuides.length} યોજનાઓ)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSavedModal(false)}
+                className="p-1 rounded-full hover:bg-white/20 text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Search */}
+            <div className="p-3 bg-gray-50 border-b border-gray-200">
+              <input
+                type="text"
+                value={savedSearchQuery}
+                onChange={(e) => setSavedSearchQuery(e.target.value)}
+                placeholder="સાચવેલી યોજનાઓમાં શોધો..."
+                className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+            </div>
+
+            {/* Guides List */}
+            <div className="p-3 overflow-y-auto flex-1 space-y-3">
+              {filteredGuides.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-xs">
+                  <Bookmark size={32} className="mx-auto text-gray-300 mb-2" />
+                  <p className="font-bold">હજુ સુધી કોઈ માર્ગદર્શિકા સાચવી નથી.</p>
+                  <p className="mt-1 text-gray-400">
+                    ચેટમાં AI ના જવાબ નીચે ⭐ સાચવો બટન દબાવી અહીં સાચવી શકો છો.
+                  </p>
+                </div>
+              ) : (
+                filteredGuides.map((guide) => (
+                  <div
+                    key={guide.id}
+                    className="p-3 rounded-xl border border-gray-200 bg-white shadow-xs hover:border-orange-300 transition"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <h4 className="font-extrabold text-xs text-slate-900 leading-snug">
+                        {guide.title}
+                      </h4>
+                      <span className="text-[10px] text-gray-400 shrink-0">{guide.savedAt}</span>
+                    </div>
+                    <div className="text-[11px] text-gray-700 line-clamp-3 mb-2 whitespace-pre-wrap">
+                      {guide.content.replace(/[*#]/g, "")}
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleShareWhatsApp(guide.content)}
+                          className="text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Share2 size={12} /> શૅર
+                        </button>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(guide.content);
+                            alert("માર્ગદર્શિકા કોપી થઈ ગઈ!");
+                          }}
+                          className="text-slate-600 hover:text-slate-800 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy size={12} /> કોપી
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updated = savedGuides.filter((g) => g.id !== guide.id);
+                          setSavedGuides(updated);
+                          localStorage.setItem("nagrikseva_saved_guides", JSON.stringify(updated));
+                        }}
+                        className="text-red-500 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 size={12} /> હટાવો
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setShowSavedModal(false)}
+                className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-4 py-1.5 rounded-xl transition cursor-pointer"
+              >
+                બંધ કરો
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
