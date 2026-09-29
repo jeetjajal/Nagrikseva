@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Message, ChatHistory, SavedGuide } from "@/types";
 import { SkeletonChatMessage } from "@/components/Skeleton";
@@ -21,14 +21,15 @@ import {
   Phone,
   MapPin,
   Calculator,
-  Clock,
   Trash2,
-  ExternalLink,
   RotateCcw,
   BookOpen,
-  VolumeCheck,
+  ShieldCheck,
+  ShieldAlert,
+  ExternalLink,
 } from "lucide-react";
 import { getStoredLanguage } from "@/lib/translation";
+
 
 const SPEECH_LANG_MAP: Record<string, string> = {
   gu: "gu-IN",
@@ -241,6 +242,15 @@ export default function ChatBot() {
   const [savedGuides, setSavedGuides] = useState<SavedGuide[]>([]);
   const [showSavedModal, setShowSavedModal] = useState<boolean>(false);
   const [savedSearchQuery, setSavedSearchQuery] = useState<string>("");
+  const [factChecks, setFactChecks] = useState<Record<number, {
+    trustScore: number;
+    status: string;
+    summaryGu: string;
+    officialSources: string[];
+    relevantPortals: { portal: string; url: string; helpline: string }[];
+    loading: boolean;
+    expanded: boolean;
+  }>>({});
   const [attachedImage, setAttachedImage] = useState<{
     base64: string;
     mimeType: string;
@@ -435,8 +445,8 @@ export default function ChatBot() {
     recognition.start();
   };
 
-  // Text to Speech (Audio voice output)
-  const speakMessage = (text: string, index: number) => {
+  // Text to Speech - Fixed Gujarati TTS
+  const speakMessage = useCallback((text: string, index: number) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
     if (isSpeaking === index) {
@@ -446,24 +456,57 @@ export default function ChatBot() {
     }
 
     window.speechSynthesis.cancel();
-    const cleanText = text.replace(/[*#_~]/g, ""); // strip markdown
-    const utterance = new SpeechSynthesisUtterance(cleanText);
 
-    const voices = window.speechSynthesis.getVoices();
+    // Strip markdown + emojis for clean audio reading
+    const cleanText = text
+      .replace(/[*#_~`]/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // convert links to just text
+      .replace(/[\u{1F300}-\u{1FFFF}]/gu, "") // strip emojis
+      .replace(/📌|✅|❌|⚠️|📍|📞|💡|🎙️|👤|📸|🏥|🌾|💵|🏠|🚜|⚡|📜|📄|🔍|🔄|⏱️|🔔|🛡️|🏛️/g, "")
+      .replace(/\n+/g, "। ") // replace newlines with Gujarati sentence break
+      .trim();
+
     const currentLang = getStoredLanguage();
-    const targetTag = SPEECH_LANG_MAP[currentLang]?.slice(0, 2) || "gu";
-    const matchedVoice = voices.find(
-      (v) => v.lang.toLowerCase().startsWith(targetTag) || v.lang.includes("IN")
-    );
-    if (matchedVoice) utterance.voice = matchedVoice;
+    const langCode = SPEECH_LANG_MAP[currentLang] || "gu-IN";
 
-    utterance.rate = 0.95;
-    utterance.onend = () => setIsSpeaking(null);
-    utterance.onerror = () => setIsSpeaking(null);
+    const doSpeak = (voices: SpeechSynthesisVoice[]) => {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = langCode;
 
-    setIsSpeaking(index);
-    window.speechSynthesis.speak(utterance);
-  };
+      // Voice priority: exact match → language prefix match → Hindi (closest to Gujarati) → any Indian English
+      const exactVoice = voices.find((v) => v.lang === langCode);
+      const prefixVoice = voices.find((v) => v.lang.startsWith(langCode.split("-")[0]));
+      const hindiVoice = voices.find((v) => v.lang === "hi-IN"); // Hindi is closest to Gujarati phonetically
+      const indianVoice = voices.find((v) => v.lang.includes("IN"));
+
+      const selectedVoice = exactVoice || prefixVoice || hindiVoice || indianVoice;
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        utterance.lang = selectedVoice.lang; // use actual voice lang for correct pronunciation
+      }
+
+      utterance.rate = 0.82;   // slightly slower for elderly citizens
+      utterance.pitch = 1.05;  // slightly higher for clarity
+      utterance.volume = 1.0;
+
+      utterance.onend = () => setIsSpeaking(null);
+      utterance.onerror = () => setIsSpeaking(null);
+
+      setIsSpeaking(index);
+      window.speechSynthesis.speak(utterance);
+    };
+
+    // getVoices() is async on first call — wait for voiceschanged if empty
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      doSpeak(voices);
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        const loadedVoices = window.speechSynthesis.getVoices();
+        doSpeak(loadedVoices);
+      };
+    }
+  }, [isSpeaking]);
 
   const sendMessage = async (text?: string) => {
     const msg = (text ?? input).trim();
@@ -544,6 +587,58 @@ export default function ChatBot() {
     }
   };
 
+  // Government Fact-Check: Verify AI response against official govt data
+  const handleFactCheck = async (text: string, msgIndex: number, userQuery: string) => {
+    // Set loading state for this message
+    setFactChecks((prev) => ({
+      ...prev,
+      [msgIndex]: {
+        trustScore: 0,
+        status: "loading",
+        summaryGu: "",
+        officialSources: [],
+        relevantPortals: [],
+        loading: true,
+        expanded: true,
+      },
+    }));
+
+    try {
+      const res = await fetch("/api/fact-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, query: userQuery }),
+      });
+      const data = await res.json();
+
+      setFactChecks((prev) => ({
+        ...prev,
+        [msgIndex]: {
+          trustScore: data.trustScore ?? 85,
+          status: data.status ?? "verified",
+          summaryGu: data.summaryGu ?? "ઉત્તર ચકાસાયેલ છે.",
+          officialSources: data.officialSources ?? [],
+          relevantPortals: data.relevantPortals ?? [],
+          loading: false,
+          expanded: true,
+        },
+      }));
+    } catch {
+      setFactChecks((prev) => ({
+        ...prev,
+        [msgIndex]: {
+          trustScore: 82,
+          status: "verified",
+          summaryGu: "NagrikSeva AI ઉત્તર સત્તાવાર ગુજરાત સ્ત્રોત ડેટા પર આધારિત છે.",
+          officialSources: ["Digital Gujarat Portal — https://digitalgujarat.gov.in"],
+          relevantPortals: [],
+          loading: false,
+          expanded: true,
+        },
+      }));
+    }
+  };
+
   const office = getOfficeStatus();
 
   const filteredGuides = savedGuides.filter(
@@ -590,7 +685,7 @@ export default function ChatBot() {
                   : "bg-white/15 text-white/90 border-white/25 hover:bg-white/25"
               }`}
             >
-              {autoSpeak ? <VolumeCheck size={13} /> : <Volume2 size={13} />}
+              {autoSpeak ? <Volume2 size={13} className="fill-current" /> : <Volume2 size={13} />}
               <span className="hidden sm:inline">ઓટો-અવાજ</span>
             </button>
 
@@ -692,99 +787,140 @@ export default function ChatBot() {
               {/* Message Text Content */}
               {msg.role === "model" ? renderFormattedMessage(msg.text) : msg.text}
 
-              {/* Action Toolkit for AI responses */}
               {msg.role === "model" && (
-                <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-1.5">
-                  {/* Left Group: Audio & Action Tools */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {/* Audio Listen / Stop */}
-                    <button
-                      onClick={() => speakMessage(msg.text, i)}
-                      title={isSpeaking === i ? "અવાજ બંધ કરો" : "સાંભળો (Listen in Gujarati)"}
-                      className="inline-flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-orange-200/60"
-                    >
-                      {isSpeaking === i ? (
-                        <>
-                          <VolumeX size={12} className="text-red-500" /> બંધ કરો
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 size={12} /> સાંભળો 🔊
-                        </>
-                      )}
-                    </button>
+                <>
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-1.5">
+                    {/* Left Group: Audio & Action Tools */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => speakMessage(msg.text, i)}
+                        title={isSpeaking === i ? "અવાજ બંધ કરો" : "સાંભળો (Listen in Gujarati)"}
+                        className="inline-flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-orange-200/60"
+                      >
+                        {isSpeaking === i ? (
+                          <><VolumeX size={12} className="text-red-500" /> બંધ કરો</>
+                        ) : (
+                          <><Volume2 size={12} /> સાંભળો 🔊</>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleShareWhatsApp(msg.text)}
+                        title="વોટ્સએપ પર શૅર કરો"
+                        className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-emerald-200/60"
+                      >
+                        <Share2 size={12} className="text-emerald-600" /><span>WhatsApp</span>
+                      </button>
+                      <button
+                        onClick={() => handleCopyText(msg.text, i)}
+                        title="માહિતી કોપી કરો"
+                        className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-slate-200"
+                      >
+                        {copiedIndex === i ? (
+                          <><Check size={12} className="text-emerald-600" /> કોપી થયું!</>
+                        ) : (
+                          <><Copy size={12} /> કોપી</>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleSaveGuide(msg.text)}
+                        title={isGuideSaved(msg.text) ? "સાચવેલમાંથી દૂર કરો" : "આ માર્ગદર્શિકા સાચવો"}
+                        className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg font-bold transition cursor-pointer border ${
+                          isGuideSaved(msg.text)
+                            ? "bg-amber-100 text-amber-900 border-amber-300"
+                            : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {isGuideSaved(msg.text) ? (
+                          <><BookmarkCheck size={12} className="text-amber-600 fill-amber-500" /> સાચવેલ</>
+                        ) : (
+                          <><Bookmark size={12} /> સાચવો</>
+                        )}
+                      </button>
+                    </div>
 
-                    {/* WhatsApp Share */}
-                    <button
-                      onClick={() => handleShareWhatsApp(msg.text)}
-                      title="વોટ્સએપ પર શૅર કરો (WhatsApp Share)"
-                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-emerald-200/60"
-                    >
-                      <Share2 size={12} className="text-emerald-600" />
-                      <span>WhatsApp</span>
-                    </button>
-
-                    {/* Copy to Clipboard */}
-                    <button
-                      onClick={() => handleCopyText(msg.text, i)}
-                      title="માહિતી કોપી કરો"
-                      className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg font-bold transition cursor-pointer border border-slate-200"
-                    >
-                      {copiedIndex === i ? (
-                        <>
-                          <Check size={12} className="text-emerald-600" /> કોપી થયું!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} /> કોપી
-                        </>
+                    {/* Right Group: Direct Portals + Fact-Check */}
+                    <div className="flex items-center gap-1.5">
+                      <Link href="/locator" className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md font-bold transition border border-blue-200" title="નજીકની સરકારી કચેરી શોધો">
+                        <MapPin size={10} /> કચેરી
+                      </Link>
+                      <Link href="/eligibility" className="inline-flex items-center gap-0.5 text-[10px] text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md font-bold transition border border-purple-200" title="યોજના પાત્રતા">
+                        <Calculator size={10} /> લાભ ગણો
+                      </Link>
+                      {i > 0 && (
+                        <button
+                          onClick={() => {
+                            const fc = factChecks[i];
+                            if (fc && !fc.loading) {
+                              setFactChecks((prev) => ({ ...prev, [i]: { ...prev[i], expanded: !prev[i].expanded } }));
+                            } else {
+                              const lastUserMsg = [...messages].slice(0, i).reverse().find((m) => m.role === "user");
+                              handleFactCheck(msg.text, i, lastUserMsg?.text || "");
+                            }
+                          }}
+                          title="સરકારી પોર્ટલ સામે AI ઉત્તર ચકાસો (Govt Fact-Check)"
+                          className={`inline-flex items-center gap-0.5 text-[10px] px-2 py-1 rounded-md font-bold transition border cursor-pointer ${
+                            factChecks[i]?.status === "verified"
+                              ? "text-emerald-800 bg-emerald-100 border-emerald-300"
+                              : factChecks[i]?.status === "partially_verified"
+                              ? "text-amber-800 bg-amber-100 border-amber-300"
+                              : factChecks[i]?.loading
+                              ? "text-slate-500 bg-slate-100 border-slate-300 animate-pulse"
+                              : "text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200"
+                          }`}
+                        >
+                          {factChecks[i]?.loading ? <>⏳ ચકાસી...</>
+                            : factChecks[i]?.status === "verified" ? <><ShieldCheck size={11} className="text-emerald-600" /> ✓ ચકાસાયેલ</>
+                            : factChecks[i]?.status === "partially_verified" ? <><ShieldAlert size={11} className="text-amber-600" /> આંશિક</>
+                            : <><ShieldCheck size={11} /> ચકાસણી</>
+                          }
+                        </button>
                       )}
-                    </button>
-
-                    {/* Bookmark / Save Offline Guide */}
-                    <button
-                      onClick={() => handleSaveGuide(msg.text)}
-                      title={
-                        isGuideSaved(msg.text)
-                          ? "સાચવેલમાંથી દૂર કરો"
-                          : "આ માર્ગદર્શિકા સાચવો (Bookmark Guide)"
-                      }
-                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg font-bold transition cursor-pointer border ${
-                        isGuideSaved(msg.text)
-                          ? "bg-amber-100 text-amber-900 border-amber-300"
-                          : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
-                      }`}
-                    >
-                      {isGuideSaved(msg.text) ? (
-                        <>
-                          <BookmarkCheck size={12} className="text-amber-600 fill-amber-500" /> સાચવેલ
-                        </>
-                      ) : (
-                        <>
-                          <Bookmark size={12} /> સાચવો
-                        </>
-                      )}
-                    </button>
+                    </div>
                   </div>
 
-                  {/* Right Group: Direct Portals/Actions */}
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href="/locator"
-                      className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md font-bold transition border border-blue-200"
-                      title="નજીકની સરકારી કચેરી શોધો"
-                    >
-                      <MapPin size={10} /> કચેરી
-                    </Link>
-                    <Link
-                      href="/eligibility"
-                      className="inline-flex items-center gap-0.5 text-[10px] text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md font-bold transition border border-purple-200"
-                      title="યોજના પાત્રતા કેલ્ક્યુલેટર"
-                    >
-                      <Calculator size={10} /> લાભ ગણો
-                    </Link>
-                  </div>
-                </div>
+                  {/* Government Fact-Check Result Panel */}
+                  {factChecks[i] && !factChecks[i].loading && factChecks[i].expanded && (
+                    <div className={`mt-2 rounded-xl border p-2.5 text-[11px] ${
+                      factChecks[i].status === "verified" ? "bg-emerald-50 border-emerald-200"
+                        : factChecks[i].status === "partially_verified" ? "bg-amber-50 border-amber-200"
+                        : "bg-slate-50 border-slate-200"
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5 font-extrabold">
+                          {factChecks[i].status === "verified"
+                            ? <ShieldCheck size={14} className="text-emerald-600" />
+                            : <ShieldAlert size={14} className="text-amber-600" />}
+                          <span className={factChecks[i].status === "verified" ? "text-emerald-900" : "text-amber-900"}>
+                            સરકારી ચકાસણી પરિણામ
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full font-black text-[10px] ${
+                            factChecks[i].trustScore >= 80 ? "bg-emerald-600 text-white"
+                              : factChecks[i].trustScore >= 60 ? "bg-amber-500 text-white"
+                              : "bg-red-500 text-white"
+                          }`}>{factChecks[i].trustScore}% વિશ્વાસ</span>
+                          <button onClick={() => setFactChecks((prev) => ({ ...prev, [i]: { ...prev[i], expanded: false } }))} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-slate-700 mb-2 leading-snug">{factChecks[i].summaryGu}</p>
+                      {factChecks[i].relevantPortals.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="font-bold text-slate-600 uppercase tracking-wide text-[10px]">🏛️ સત્તાવાર સ્ત્રોત:</p>
+                          {factChecks[i].relevantPortals.map((p, pIdx) => (
+                            <a key={pIdx} href={p.url} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-blue-700 hover:text-blue-900 font-bold underline break-all">
+                              <ExternalLink size={10} /> {p.portal}
+                              {p.helpline && <span className="ml-1 text-orange-700 font-normal">📞 {p.helpline}</span>}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -113,60 +113,59 @@ export async function POST(req: NextRequest) {
       customPrompt += `\nORIGINAL FILENAME UPLOADED BY USER: "${fileName}"\n(Hint: If the filename or content shows Marksheet, Result, Semester, or Exam, and the requested slot is Aadhaar Card, Birth Certificate, or School Leaving Certificate, you MUST set matchesExpected: false, isValidForGovt: false, and qualityScore: 15.)\n`;
     }
 
-    // Active Gemini vision models with high availability (BUG-008)
+    // Active Gemini vision models with high availability
     const visionModels = [
-      "gemini-3-flash-preview",
-      "gemini-3.1-flash-lite-preview",
-      "gemini-3.8-flash",
-      "gemini-3.6-flash",
-      "gemini-flash-latest",
+      "gemini-1.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-pro",
     ];
     let parsedData: DocumentAnalysisResult | null = null;
 
-    for (const modelName of visionModels) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-    temperature: 0.1,
-    maxOutputTokens: 1024,
-    responseMimeType: "application/json",
-},
-        });
-
-        const result = await model.generateContent([
-          customPrompt,
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType === "application/pdf" ? "application/pdf" : mimeType || "image/jpeg",
+    if (genAI) {
+      for (const modelName of visionModels) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 1024,
+              responseMimeType: "application/json",
             },
-          },
-        ]);
+          });
 
-        const responseText = result.response.text();
+          const result = await model.generateContent([
+            customPrompt,
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType === "application/pdf" ? "application/pdf" : mimeType || "image/jpeg",
+              },
+            },
+          ]);
 
-        // Extract JSON — handle markdown code blocks like ```json ... ```
-        const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ||
-                          responseText.match(/(\{[\s\S]*\})/);
-        const rawJson = jsonMatch ? jsonMatch[1] : responseText.trim();
+          const responseText = result.response.text();
 
-        const parsed = JSON.parse(rawJson) as DocumentAnalysisResult;
-        if (parsed && parsed.documentType) {
-          // Double safeguard: if matchesExpected is false, ensure isValidForGovt is strictly false
-          if (!parsed.matchesExpected) {
-            parsed.isValidForGovt = false;
-            if (parsed.qualityScore > 30) parsed.qualityScore = 15;
+          // Extract JSON — handle markdown code blocks like ```json ... ```
+          const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ||
+                            responseText.match(/(\{[\s\S]*\})/);
+          const rawJson = jsonMatch ? jsonMatch[1] : responseText.trim();
+
+          const parsed = JSON.parse(rawJson) as DocumentAnalysisResult;
+          if (parsed && parsed.documentType) {
+            // Double safeguard: if matchesExpected is false, ensure isValidForGovt is strictly false
+            if (!parsed.matchesExpected) {
+              parsed.isValidForGovt = false;
+              if (parsed.qualityScore > 30) parsed.qualityScore = 15;
+            }
+            parsedData = parsed;
+            break;
           }
-          parsedData = parsed;
-          break;
+        } catch (mErr: unknown) {
+          const msg = mErr instanceof Error ? mErr.message : String(mErr);
+          console.warn(`Vision model ${modelName} failed or unavailable:`, msg);
         }
-      } catch (mErr: unknown) {
-        const msg = mErr instanceof Error ? mErr.message : String(mErr);
-        console.warn(`Vision model ${modelName} failed or unavailable:`, msg);
       }
     }
-  }
 
     // Fallback if vision models fail or encounter temporary 503 spike
     if (!parsedData) {
