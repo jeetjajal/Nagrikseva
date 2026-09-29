@@ -7,6 +7,7 @@ import {
   CitizenApplication,
   lookupCitizenExistingRecord,
   ExistingCitizenProfile,
+  getVillagesForTaluka,
 } from "@/lib/large-datasets";
 import {
   FileCheck2,
@@ -164,18 +165,50 @@ export default function DocumentServicePortal({
   const [village, setVillage] = useState<string>("");
   const [houseNo, setHouseNo] = useState<string>("");
   const [streetSociety, setStreetSociety] = useState<string>("");
-  const [pincode, setPincode] = useState<string>("360320");
+  const [pincode, setPincode] = useState<string>("360311");
+  const [userUploadedPhoto, setUserUploadedPhoto] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("nagrik_user_photo") || "";
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  });
 
   // Service Specific Kacheri Fields
   const [rationCategory, setRationCategory] = useState<string>("NFSA - APL-1");
-  const [fpsShopNo, setFpsShopNo] = useState<string>("FPS-342 (ગોમટા સેવા સહકારી)");
+  const [fpsShopNo, setFpsShopNo] = useState<string>("FPS-108 (રાજકોટ પંચાયત સેવા કેન્દ્ર)");
   const [gasConnectionStatus] = useState<string>("સિંગલ બોટલ (Single Cylinder)");
   const [bankAccountNo] = useState<string>("•••• •••• 4912");
   const [bankIfsc] = useState<string>("SBIN0001249");
-  const [annualIncomeVal, setAnnualIncomeVal] = useState<string>("120000");
-  const [occupation, setOccupation] = useState<string>("ખેતી / પશુપાલન (Agriculture)");
-  const [subCaste] = useState<string>("પાટીદાર (પટેલ)");
-  const [religion] = useState<string>("હિન્દુ (Hindu)");
+  const [annualIncomeVal, setAnnualIncomeVal] = useState<string>("180000");
+  const [occupation, setOccupation] = useState<string>("ખેતી / વ્યવસાય (Farmer)");
+  const [subCaste, setSubCaste] = useState<string>("કડવા પાટીદાર (પટેલ)");
+  const [religion, setReligion] = useState<string>("હિન્દુ (Hindu)");
+
+  // Extended Government Services Form States
+  const [surveyNumber, setSurveyNumber] = useState<string>("241/1 પૈકી");
+  const [khataNumber, setKhataNumber] = useState<string>("412");
+  const [landArea, setLandArea] = useState<string>("1.42 હેક્ટર");
+  const [childName, setChildName] = useState<string>("હરી");
+  const [birthPlace, setBirthPlace] = useState<string>("સિવિલ હોસ્પિટલ, રાજકોટ");
+  const [deceasedName, setDeceasedName] = useState<string>("નારણભાઈ પટેલ");
+  const [deathDate, setDeathDate] = useState<string>("2023-11-04");
+  const [deathPlace, setDeathPlace] = useState<string>("રાજકોટ (ઘરે)");
+  const [ewsPropertyType, setEwsPropertyType] = useState<string>("રહેણાંક મકાન (< ૧૦૦૦ ચો.ફૂટ)");
+  const [domicileYears, setDomicileYears] = useState<string>("૨૦ વર્ષ (જન્મથી ગુજરાત)");
+  const [seniorBloodGroup, setSeniorBloodGroup] = useState<string>("B+");
+  const [seniorEmergencyPhone, setSeniorEmergencyPhone] = useState<string>("9974442291");
+  const [drivingClass, setDrivingClass] = useState<string>("MCWG (મોટરસાયકલ) & LMV (કાર)");
+  const [rtoOfficeName, setRtoOfficeName] = useState<string>("GJ-03 RTO કચેરી, રાજકોટ");
+  const [marriageDate, setMarriageDate] = useState<string>("2025-02-14");
+  const [spouseName, setSpouseName] = useState<string>("પ્રિયાબેન");
+
+  // Category and Search filter for the 69 services selector
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState<string>("all");
+  const [serviceSearchQuery, setServiceSearchQuery] = useState<string>("");
 
   // 5. Document Uploads & AI Inspections
   const [uploadedDocs, setUploadedDocs] = useState<Record<string, UploadedDocState>>({});
@@ -222,10 +255,10 @@ export default function DocumentServicePortal({
             if (parsed) {
               const cit = parsed.citizen || parsed;
               setCitizenSession(cit);
-              setApplicantName((prev) => prev || cit.citizenName || "Rameshbhai Kantilal Patel");
-              setApplicantNameGu((prev) => prev || cit.citizenNameGu || "રમેશભાઈ કાંતિલાલ પટેલ");
-              setMobileNumber((prev) => prev || cit.mobile || "9825012345");
-              setAadhaarNumber((prev) => prev || `XXXX-XXXX-${cit.aadhaarLast4 || "4829"}`);
+              setApplicantName((prev) => prev || cit.citizenName || "Hari Vinodrai Patel");
+              setApplicantNameGu((prev) => prev || cit.citizenNameGu || "હરી વિનોદરાઈ પટેલ");
+              setMobileNumber((prev) => prev || cit.mobile || "9974442291");
+              setAadhaarNumber((prev) => prev || `XXXX-XXXX-${cit.aadhaarLast4 || "1413"}`);
               if (cit.district) setDistrict(cit.district);
               if (cit.taluka) setTaluka(cit.taluka);
               if (cit.village) setVillage(cit.village);
@@ -257,54 +290,81 @@ export default function DocumentServicePortal({
 
   // Dynamic Required Documents calculation based on service and selected corrections
   const getDynamicRequiredDocs = () => {
-    if (serviceMode === "new") {
-      return service.requiredDocsNew;
-    }
+    const isPhotoDocService = [
+      "aadhaar",
+      "pan",
+      "driving",
+      "ayushman",
+      "ration",
+      "senior_citizen",
+      "disability",
+    ].includes(selectedServiceId);
 
-    // Base document: existing copy of current document
-    const docs = [...service.requiredDocsUpdate];
+    const rawDocs =
+      serviceMode === "new" ? [...service.requiredDocsNew] : [...service.requiredDocsUpdate];
 
-    if (selectedCorrections.includes("address")) {
-      if (!docs.some((d) => d.id === "address_proof_new")) {
-        docs.push({
-          id: "address_proof_new",
-          nameEn: "Proof of New Address (Electricity Bill / Tax Receipt / Registry)",
-          nameGu: "નવા સરનામાનો અધિકૃત પુરાવો (લાઈટ બિલ / મિલકત વેરા બિલ)",
-          mandatory: true,
-        });
+    // Filter and deduplicate: keep strictly AT MOST ONE photo item across all documents
+    let hasPhotoEntry = false;
+    const docs = rawDocs.filter((d) => {
+      const isPhoto =
+        d.id === "applicant_photo" ||
+        d.id === "photo_proof" ||
+        d.id === "passport_photo" ||
+        d.id === "photo" ||
+        (d.id.includes("photo") && d.id !== "photo_id");
+      if (isPhoto) {
+        if (hasPhotoEntry) return false;
+        hasPhotoEntry = true;
+        d.id = "applicant_photo";
+        d.nameEn = "Applicant Passport Size Photograph";
+        d.nameGu = "અરજદારનો પાસપોર્ટ સાઇઝ રંગીન ફોટો (Passport Photo)";
+        return true;
       }
+      return true;
+    });
+
+    // If service requires photo and none exists yet, prepend strictly ONE photo item
+    if (!hasPhotoEntry && (isPhotoDocService || serviceMode === "new")) {
+      docs.unshift({
+        id: "applicant_photo",
+        nameEn: "Applicant Passport Size Photograph",
+        nameGu: "અરજદારનો પાસપોર્ટ સાઇઝ રંગીન ફોટો (Passport Photo)",
+        mandatory: true,
+      });
     }
 
-    if (selectedCorrections.includes("name") || selectedCorrections.includes("dob")) {
-      if (!docs.some((d) => d.id === "name_dob_proof")) {
-        docs.push({
-          id: "name_dob_proof",
-          nameEn: "Birth Certificate / School Leaving Certificate (LC) for Name/DOB Proof",
-          nameGu: "જન્મનો દાખલો / શાળા છોડ્યાનું પ્રમાણપત્ર (LC - જન્મ/નામ પુરાવો)",
-          mandatory: true,
-        });
+    if (serviceMode === "update") {
+      if (selectedCorrections.includes("address")) {
+        if (!docs.some((d) => d.id === "address_proof_new")) {
+          docs.push({
+            id: "address_proof_new",
+            nameEn: "Proof of New Address (Electricity Bill / Tax Receipt / Registry)",
+            nameGu: "નવા સરનામાનો અધિકૃત પુરાવો (લાઈટ બિલ / મિલકત વેરા બિલ)",
+            mandatory: true,
+          });
+        }
       }
-    }
 
-    if (selectedCorrections.includes("add_member")) {
-      if (!docs.some((d) => d.id === "member_proof")) {
-        docs.push({
-          id: "member_proof",
-          nameEn: "Birth / Marriage Certificate of New Member",
-          nameGu: "ઉમેરવાના સભ્યનું જન્મ પ્રમાણપત્ર અથવા લગ્ન નોંધણી",
-          mandatory: true,
-        });
+      if (selectedCorrections.includes("name") || selectedCorrections.includes("dob")) {
+        if (!docs.some((d) => d.id === "name_dob_proof")) {
+          docs.push({
+            id: "name_dob_proof",
+            nameEn: "Birth Certificate / School Leaving Certificate (LC) for Name/DOB Proof",
+            nameGu: "જન્મનો દાખલો / શાળા છોડ્યાનું પ્રમાણપત્ર (LC - જન્મ/નામ પુરાવો)",
+            mandatory: true,
+          });
+        }
       }
-    }
 
-    if (selectedCorrections.includes("photo_biometric") || selectedCorrections.includes("photo_sign")) {
-      if (!docs.some((d) => d.id === "photo_proof")) {
-        docs.push({
-          id: "photo_proof",
-          nameEn: "Fresh Passport Size Color Photograph (Plain Background)",
-          nameGu: "તાજો પાસપોર્ટ સાઇઝ રંગીન ફોટો (કોઈપણ સાદું બેકગ્રાઉન્ડ - સફેદ/વાદળી/લાઇટ)",
-          mandatory: true,
-        });
+      if (selectedCorrections.includes("add_member")) {
+        if (!docs.some((d) => d.id === "member_proof")) {
+          docs.push({
+            id: "member_proof",
+            nameEn: "Birth / Marriage Certificate of New Member",
+            nameGu: "ઉમેરવાના સભ્યનું જન્મ પ્રમાણપત્ર અથવા લગ્ન નોંધણી",
+            mandatory: true,
+          });
+        }
       }
     }
 
@@ -367,7 +427,7 @@ export default function DocumentServicePortal({
     try {
       const base64Data = await compressImageIfNeeded(file);
 
-      // Set analyzing state
+      // Set analyzing state with loading indicator for all documents including photos
       setUploadedDocs((prev) => ({
         ...prev,
         [docId]: {
@@ -379,13 +439,26 @@ export default function DocumentServicePortal({
         },
       }));
 
+      const isPhotoDoc =
+        docId === "applicant_photo" ||
+        docId === "photo_proof" ||
+        docId === "passport_photo" ||
+        docId === "photo" ||
+        (docId.includes("photo") && docId !== "photo_id");
+
+      const docItemObj = requiredDocs.find((d) => d.id === docId);
+      const expectedType = isPhotoDoc
+        ? "Passport Size Photograph / Photo Proof (પાસપોર્ટ સાઇઝ રંગીન ફોટો)"
+        : (docItemObj?.nameEn || docItemObj?.nameGu || "");
+
       const res = await fetch("/api/verify-doc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64: base64Data,
           mimeType: file.type || "image/jpeg",
-          expectedDocType: requiredDocs.find((d) => d.id === docId)?.nameEn || "",
+          expectedDocType: expectedType,
+          fileName: file.name,
         }),
       });
 
@@ -396,7 +469,7 @@ export default function DocumentServicePortal({
       const data = await res.json();
       if (data.success && data.analysis) {
         const a = data.analysis;
-        const isMismatch = a.matchesExpected === false || a.isValidForGovt === false;
+        const isMismatch = a.matchesExpected === false || a.isValidForGovt === false || (typeof a.qualityScore === "number" && a.qualityScore < 40);
         let calculatedStatus: "valid" | "warning" | "invalid" = "valid";
         if (isMismatch) {
           calculatedStatus = "invalid";
@@ -404,6 +477,25 @@ export default function DocumentServicePortal({
           calculatedStatus = "warning";
         } else {
           calculatedStatus = "valid";
+        }
+
+        // Only save as citizen photo if AI approves the photo as valid
+        if (isPhotoDoc) {
+          if (calculatedStatus === "valid") {
+            setUserUploadedPhoto(base64Data);
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem("nagrik_user_photo", base64Data);
+              } catch {}
+            }
+          } else {
+            setUserUploadedPhoto("");
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.removeItem("nagrik_user_photo");
+              } catch {}
+            }
+          }
         }
 
         setUploadedDocs((prev) => ({
@@ -414,7 +506,7 @@ export default function DocumentServicePortal({
             fileType: file.type || "image/jpeg",
             base64: base64Data,
             status: calculatedStatus,
-            qualityScore: a.qualityScore || (isMismatch ? 15 : 92),
+            qualityScore: a.qualityScore || (isMismatch ? 10 : 92),
             adviceGu: a.actionableAdviceGu || a.feedbackGu || "દસ્તાવેજ સફળતાપૂર્વક ચકાસાયો.",
             needsUpdate: a.needsUpdate,
             needsNewDocument: a.needsNewDocument,
@@ -425,6 +517,20 @@ export default function DocumentServicePortal({
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "દસ્તાવેજ ચકાસણી સર્વર સાથે સંપર્ક થઈ શક્યો નહીં.";
+      const isPhotoDoc =
+        docId === "applicant_photo" ||
+        docId === "photo_proof" ||
+        docId === "passport_photo" ||
+        docId === "photo" ||
+        (docId.includes("photo") && docId !== "photo_id");
+      if (isPhotoDoc) {
+        setUserUploadedPhoto("");
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("nagrik_user_photo");
+          } catch {}
+        }
+      }
       // Strict fallback on failure: do NOT mark as valid
       setUploadedDocs((prev) => ({
         ...prev,
@@ -434,7 +540,7 @@ export default function DocumentServicePortal({
           fileType: file.type || "image/jpeg",
           base64: "",
           status: "invalid",
-          qualityScore: 15,
+          qualityScore: 10,
           adviceGu: `❌ ${errorMsg} કૃપા કરીને સાચો સત્તાવાર દસ્તાવેજ ફરીથી અપલોડ કરો.`,
           needsUpdate: false,
           needsNewDocument: false,
@@ -447,7 +553,7 @@ export default function DocumentServicePortal({
   const handleFetchExistingRecord = () => {
     setIsFetchingProfile(true);
     setTimeout(() => {
-      const profile = lookupCitizenExistingRecord(service.id, lookupNumber || "4829");
+      const profile = lookupCitizenExistingRecord(service.id, lookupNumber || "1413");
       setFetchedProfile(profile);
       setApplicantName(profile.applicantName);
       setApplicantNameGu(profile.applicantNameGu);
@@ -460,14 +566,31 @@ export default function DocumentServicePortal({
       setTaluka(profile.taluka);
       setVillage(profile.village);
       setPincode(profile.pincode);
-      setStreetSociety("પટેલ શેરી, ગોમટા ગામ");
-      setHouseNo("૧૨");
+      setStreetSociety("ઓમ નગર, ૧૫૦ ફૂટ રિંગ રોડ");
+      setHouseNo("૧૦૨");
 
       if (service.id === "ration") {
         setRationCategory("NFSA - APL-1");
-        setFpsShopNo("FPS-342 (ગોમટા સેવા સહકારી)");
+        setFpsShopNo("FPS-108 (રાજકોટ પંચાયત સેવા કેન્દ્ર)");
       } else if (service.id === "aadhaar") {
-        setAadhaarNumber(lookupNumber ? lookupNumber.slice(-4) : "4829");
+        setAadhaarNumber(lookupNumber ? lookupNumber.slice(-4) : "1413");
+      } else if (service.id === "land_records") {
+        setKhataNumber("412");
+        setSurveyNumber("241/1 પૈકી");
+        setLandArea("1.42 હેક્ટર");
+      } else if (service.id === "birth_cert") {
+        setChildName("હરી");
+        setBirthPlace("સિવિલ હોસ્પિટલ, રાજકોટ");
+      } else if (service.id === "death_cert") {
+        setDeceasedName("નારણભાઈ પટેલ");
+        setDeathDate("2023-11-04");
+        setDeathPlace("રાજકોટ (ઘરે)");
+      } else if (service.id === "senior_citizen") {
+        setSeniorBloodGroup("B+");
+        setSeniorEmergencyPhone("9974442291");
+      } else if (service.id === "driving_licence") {
+        setDrivingClass("MCWG (મોટરસાયકલ) & LMV (કાર)");
+        setRtoOfficeName("GJ-03 RTO કચેરી, રાજકોટ");
       }
 
       setIsFetchingProfile(false);
@@ -618,6 +741,8 @@ export default function DocumentServicePortal({
           verified: uploadedDocs[d.id]?.status === "valid",
           qualityScore: uploadedDocs[d.id]?.qualityScore || 90,
         })),
+        citizenPhoto: userUploadedPhoto || uploadedDocs["applicant_photo"]?.base64 || uploadedDocs["photo_proof"]?.base64 || uploadedDocs["passport_photo"]?.base64 || undefined,
+        userPhoto: userUploadedPhoto || uploadedDocs["applicant_photo"]?.base64 || uploadedDocs["photo_proof"]?.base64 || uploadedDocs["passport_photo"]?.base64 || undefined,
       };
 
       const res = await fetch("/api/track", {
@@ -631,6 +756,27 @@ export default function DocumentServicePortal({
         setShowPaymentModal(false);
         setSubmittedApp(data.application);
         setNotificationPayload(data.notifications || null);
+
+        // Sync with browser localStorage so it immediately reflects in My Applications
+        if (typeof window !== "undefined") {
+          try {
+            const savedAppsStr = localStorage.getItem("nagrik_user_applications");
+            let savedApps = savedAppsStr ? JSON.parse(savedAppsStr) : [];
+            savedApps = [data.application, ...savedApps.filter((a: { id?: string }) => a && a.id !== data.application.id)];
+            localStorage.setItem("nagrik_user_applications", JSON.stringify(savedApps));
+
+            const savedSessionStr = localStorage.getItem("nagrik_citizen_session");
+            if (savedSessionStr) {
+              const session = JSON.parse(savedSessionStr);
+              const existing = session.activeApplications || [];
+              session.activeApplications = [data.application, ...existing.filter((a: { id?: string }) => a && a.id !== data.application.id)];
+              localStorage.setItem("nagrik_citizen_session", JSON.stringify(session));
+            }
+            window.dispatchEvent(new Event("storage"));
+          } catch (storageErr) {
+            console.warn("Storage sync error:", storageErr);
+          }
+        }
       } else {
         alert(data.error || "અરજી સબમિટ કરવામાં મુશ્કેલી આવી.");
       }
@@ -677,6 +823,50 @@ export default function DocumentServicePortal({
         return [
           { id: "renew_ncl", labelGu: "નોન-ક્રીમીલેયર રિન્યુઅલ (NCL Renewal)", desc: "૩ નાણાકીય વર્ષ પૂર્ણ થતાં નવું પ્રમાણપત્ર" },
           { id: "name_mismatch", labelGu: "LC મુજબ નામ સુધારો (Name Correction)", desc: "શાળા છોડ્યાના પ્રમાણપત્ર મુજબ સુધારો" },
+        ];
+      case "land_records":
+        return [
+          { id: "varasai", labelGu: "વારસાઈ આંબલીયો નોંધણી (Heirship Entry)", desc: "મૂળ ખાતેદાર અવસાન પામતાં વારસદારોના નામ દાખલ કરવા" },
+          { id: "boja_nondh", labelGu: "બેંક બોજો / ધિરાણ નોંધણી (Bank Loan Entry)", desc: "ખેતી ધિરાણ મેળવવા બેંક બોજો નોંધવો" },
+          { id: "hakk_kami", labelGu: "હક્ક કમી / વહેંચણી (Right Surrender / Partition)", desc: "જમીનમાંથી હક્ક કમી કરવો કે સર્વે વિભાજન" },
+        ];
+      case "birth_cert":
+        return [
+          { id: "add_child_name", labelGu: "બાળકનું નામ ઉમેરવું (Add Child Name)", desc: "જન્મ સમયે નામ ન લખાયું હોય તો નવું નામ દાખલ કરવું" },
+          { id: "name_spelling", labelGu: "નામ / અટકમાં સ્પેલિંગ સુધારો (Spelling Correction)", desc: "શાળા એલસી અથવા આધાર મુજબ સ્પેલિંગ સુધારો" },
+          { id: "dob_correction", labelGu: "જન્મ સ્થળ / તારીખ સુધારો", desc: "હોસ્પિટલ રેકોર્ડ મુજબ સુધારો કરવો" },
+        ];
+      case "death_cert":
+        return [
+          { id: "death_name_corr", labelGu: "મૃતકના નામમાં સ્પેલિંગ સુધારો", desc: "મૃતકના આધાર કાર્ડ મુજબ સુધારો કરવો" },
+          { id: "death_date_corr", labelGu: "મરણ તારીખ / સ્થળ સુધારો", desc: "હોસ્પિટલ/સ્મશાન દાખલા મુજબ સુધારો" },
+        ];
+      case "ews_cert":
+        return [
+          { id: "ews_renewal", labelGu: "વાર્ષિક નવીકરણ (Annual Renewal)", desc: "આગામી નાણાકીય વર્ષ માટે EWS પ્રમાણપત્ર તાજું કરવું" },
+          { id: "ews_income_update", labelGu: "આવક / મિલકત વિગત સુધારો", desc: "નવા આવક દાખલા મુજબ સુધારો" },
+        ];
+      case "domicile_cert":
+        return [
+          { id: "domicile_address", labelGu: "સરનામું બદલવું (Address Update)", desc: "ગુજરાતમાં નવું રહેઠાણ સરનામું નોંધવું" },
+          { id: "domicile_name", labelGu: "નામ સુધારો (Name Correction)", desc: "સરકારી પુરાવા મુજબ નામ સુધારવું" },
+        ];
+      case "senior_citizen":
+        return [
+          { id: "senior_blood", labelGu: "બ્લડ ગ્રુપ સુધારો (Blood Group Update)", desc: "તબીબી રિપોર્ટ મુજબ બ્લડ ગ્રુપ ઉમેરવું" },
+          { id: "senior_emergency", labelGu: "ઇમરજન્સી સંપર્ક નંબર બદલવો", desc: "પુત્ર/પુત્રીનો નવો મોબાઈલ નંબર નોંધવો" },
+          { id: "senior_address", labelGu: "સરનામું બદલવું (Address Change)", desc: "નવા સરનામે કાર્ડ અપડેટ કરવું" },
+        ];
+      case "driving_licence":
+        return [
+          { id: "dl_renewal", labelGu: "ડ્રાઇવિંગ લાયસન્સ રિન્યુઅલ (DL Renewal)", desc: "મુદત પૂર્ણ થતાં લાયસન્સ રિન્યુ કરવું" },
+          { id: "dl_address", labelGu: "લાયસન્સમાં સરનામું બદલવું (Address Change)", desc: "નવા જિલ્લા કે શહેરનું સરનામું બદલવું" },
+          { id: "dl_add_class", labelGu: "વાહન ક્લાસ ઉમેરવો (Add Vehicle Class)", desc: "MCWG બાઇક અથવા LMV કાર વર્ગ ઉમેરવો" },
+        ];
+      case "marriage_cert":
+        return [
+          { id: "marriage_spelling", labelGu: "પતિ / પત્નીના નામમાં સ્પેલિંગ સુધારો", desc: "આધાર કાર્ડ મુજબ નામ સુધારવું" },
+          { id: "marriage_address", labelGu: "કાયમી રહેઠાણ સરનામું સુધારો", desc: "લગ્ન નોંધણીમાં સરનામું સુધારવું" },
         ];
       default:
         return [{ id: "general", labelGu: "સામાન્ય સુધારો (Correction)", desc: "દસ્તાવેજમાં ફેરફાર" }];
@@ -1138,7 +1328,12 @@ export default function DocumentServicePortal({
 
       {/* ── Official A4 Government Receipt Slip Modal (PDF Download / Print) ── */}
       {showSlipModal && submittedApp && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowSlipModal(false);
+          }}
+        >
           <GovernmentReceiptSlip
             app={submittedApp}
             isModalPreview={true}
@@ -1221,255 +1416,6 @@ export default function DocumentServicePortal({
         </div>
       )}
 
-      {/* ── Submission Success & Real-Time Alert Modal ── */}
-      {submittedApp && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-300">
-          <div className={`bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-8 space-y-5 shadow-2xl border-2 relative ${
-            submittedApp.paymentStatus === "pending_challan" ? "border-amber-500" : "border-emerald-500"
-          }`}>
-            {/* Header */}
-            <div className="text-center space-y-1.5">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto shadow-inner ${
-                submittedApp.paymentStatus === "pending_challan"
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-emerald-100 text-emerald-600"
-              }`}>
-                {submittedApp.paymentStatus === "pending_challan" ? <Landmark size={30} /> : <CheckCircle2 size={32} />}
-              </div>
-              <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full border ${
-                submittedApp.paymentStatus === "pending_challan"
-                  ? "text-amber-800 bg-amber-50 border-amber-300"
-                  : "text-emerald-700 bg-emerald-50 border-emerald-200"
-              }`}>
-                {submittedApp.paymentStatus === "pending_challan"
-                  ? "સત્તાવાર રોકડ ચલણ જનરેટ થયું • Cash Challan Issued"
-                  : "સત્તાવાર અરજી નોંધણી સફળ • Govt Registered"}
-              </span>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-                {submittedApp.paymentStatus === "pending_challan"
-                  ? "ઓફલાઇન રોકડ ચલણ પાવતી સફળતાપૂર્વક જનરેટ થઈ!"
-                  : "અરજી સફળતાપૂર્વક સ્વીકારાઈ ગઈ છે!"}
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 font-medium">
-                અરજી ક્રમાંક (Tracking ID):{" "}
-                <span className="font-mono font-black text-orange-600 text-base">{submittedApp.id}</span>
-              </p>
-            </div>
-
-            {/* Treasury Payment Badge */}
-            {submittedApp.paymentStatus === "pending_challan" ? (
-              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <Receipt size={16} className="text-amber-700 shrink-0" />
-                  <div>
-                    <span className="font-bold text-amber-950 block">કચેરીએ ઓફલાઇન રોકડ ચલણ (Jan Seva Kendra Cash Counter)</span>
-                    <span className="text-[11px] text-amber-800 font-mono">
-                      GRN / ચલણ નં: <strong>{submittedApp.challanNo || activeChallanNo}</strong>
-                    </span>
-                  </div>
-                </div>
-                <span className="bg-amber-600 text-white font-mono font-bold px-2.5 py-1 rounded-lg text-xs whitespace-nowrap">
-                  ₹ {submittedApp.feeAmount || service.fee} ભરપાઈ બાકી
-                </span>
-              </div>
-            ) : (
-              <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <Receipt size={16} className="text-emerald-700 shrink-0" />
-                  <div>
-                    <span className="font-bold text-emerald-900 block">
-                      સરકારી ફી ભરપાઈ (Paid via {submittedApp.paymentMethod === "upi" ? "UPI Bharat QR" : "NetBanking/Card"})
-                    </span>
-                    <span className="text-[11px] text-emerald-700 font-mono">
-                      Txn: {submittedApp.txnId || activeTxnId} • GRN: {submittedApp.challanNo || activeChallanNo}
-                    </span>
-                  </div>
-                </div>
-                <span className="bg-emerald-600 text-white font-mono font-bold px-2.5 py-1 rounded-lg text-xs whitespace-nowrap">
-                  ₹ {submittedApp.feeAmount || service.fee} PAID
-                </span>
-              </div>
-            )}
-
-            {/* Strict Document Lock Protocol for Cash Challan */}
-            {submittedApp.paymentStatus === "pending_challan" && (
-              <div className="bg-amber-50/90 border-2 border-amber-400 rounded-2xl p-3.5 sm:p-4 space-y-2 text-xs text-amber-950">
-                <div className="flex items-center gap-2 font-black text-amber-900 text-sm">
-                  <span>🔒</span>
-                  <span>પ્રમાણપત્ર લૉક પ્રોટોકોલ (Document Release Locked):</span>
-                </div>
-                <p className="leading-relaxed text-amber-900 font-medium">
-                  સરકારી નિયમ અનુસાર ઓનલાઇન ફી ભરપાઈ ન હોવાથી તમારું નવું/સુધારેલ પ્રમાણપત્ર હાલ <strong>સંપૂર્ણ લૉક</strong> છે.
-                </p>
-                <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200 space-y-1 text-[11px] text-slate-800">
-                  <p className="font-bold text-slate-900">📌 કચેરી ખાતે અનુસરવાની પ્રક્રિયા:</p>
-                  <p>૧. નીચે આપેલ બટનથી <strong>&apos;ઓફલાઇન રોકડ ચલણ&apos;</strong> ડાઉનલોડ અથવા પ્રિન્ટ કરો.</p>
-                  <p>૨. તાલુકા જન સેવા કેન્દ્રના રોકડ કાઉન્ટર પર ચલણ નં. <strong className="font-mono text-orange-700">{submittedApp.challanNo || activeChallanNo}</strong> સાથે નિયત ફી <strong className="font-mono text-emerald-800">₹{submittedApp.feeAmount || service.fee}</strong> રોકડા ભરો.</p>
-                  <p>૩. કચેરી ઓપરેટર સિસ્ટમમાં &apos;Payment Confirmed&apos; કરશે ત્યાર બાદ જ તમારું પ્રમાણપત્ર રિલીઝ (અનલૉક) થશે.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Biometric Appointment Slot if applicable */}
-            {submittedApp.biometricRequired && submittedApp.appointmentToken && (
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center gap-2 text-blue-900 font-extrabold text-sm">
-                  <Fingerprint size={18} className="text-blue-600" />
-                  <span>બાયોમેટ્રિક ફાસ્ટ-ટ્રેક એપોઇન્ટમેન્ટ સ્લોટ ફાળવાયો</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                  <div className="bg-white p-2 rounded-xl border border-blue-100">
-                    <span className="text-slate-400 text-[10px] block">ટોકન નંબર</span>
-                    <span className="font-mono font-extrabold text-blue-700 text-sm">{submittedApp.appointmentToken}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-xl border border-blue-100">
-                    <span className="text-slate-400 text-[10px] block">તારીખ & સમય</span>
-                    <span className="font-bold text-slate-800">{submittedApp.appointmentDate} (૧૧:૩૦ AM)</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-xl border border-blue-100 col-span-2 sm:col-span-1">
-                    <span className="text-slate-400 text-[10px] block">કેન્દ્ર</span>
-                    <span className="font-semibold text-slate-800 text-[11px] truncate block">જન સેવા કેન્દ્ર, {taluka}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Live Citizen Notifications (SMS & Email Preview) */}
-            {notificationPayload && (
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
-                  <Smartphone size={15} className="text-orange-600" />
-                  <span>ઓટોમેટેડ નાગરિક સૂચનાઓ (Live SMS & Email Alert Simulated):</span>
-                </h4>
-
-                {/* SMS Simulation */}
-                {notificationPayload.sms && (
-                  <div className="bg-slate-900 text-slate-100 rounded-2xl p-3.5 space-y-1.5 shadow-md">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800 pb-1">
-                      <span className="font-mono text-orange-400 font-bold">📱 GOVT-GUJ SMS ALERT</span>
-                      <span>To: {notificationPayload.sms.sentTo}</span>
-                    </div>
-                    <p className="text-xs font-mono leading-relaxed text-slate-200">
-                      {notificationPayload.sms.message}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Buttons - Hard Responsive with Direct PDF Download */}
-            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowSlipModal(true)}
-                className={`flex-1 py-3 px-4 active:scale-95 text-white rounded-xl text-center font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 whitespace-nowrap ${
-                  submittedApp.paymentStatus === "pending_challan"
-                    ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700"
-                    : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
-                }`}
-              >
-                <Printer size={16} />
-                <span>
-                  {submittedApp.paymentStatus === "pending_challan"
-                    ? "🖨️ ઓફલાઇન રોકડ ચલણ (PDF / પ્રિન્ટ કરો)"
-                    : "🖨️ સત્તાવાર સરકારી પહોંચ / PDF ડાઉનલોડ"}
-                </span>
-              </button>
-
-              <Link
-                href={`/track?id=${encodeURIComponent(submittedApp.id)}`}
-                className="py-3 px-4 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white rounded-xl text-center font-extrabold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-1.5 whitespace-nowrap"
-              >
-                <Eye size={15} />
-                <span>લાઈવ સ્ટેટસ</span>
-              </Link>
-
-              <button
-                onClick={() => setSubmittedApp(null)}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap"
-              >
-                નવી અરજી
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Official A4 Government Receipt Slip Modal (PDF Download / Print) ── */}
-      {showSlipModal && submittedApp && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
-          <GovernmentReceiptSlip
-            app={submittedApp}
-            isModalPreview={true}
-            onClose={() => setShowSlipModal(false)}
-          />
-        </div>
-      )}
-
-      {/* ── Top Bar: Fast 1-Click Demo Button for Judges ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 p-4 rounded-2xl border border-orange-200 shadow-xs">
-        <div>
-          <h2 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
-            <span className="p-1 bg-orange-600 text-white rounded-lg text-xs">🏛️</span>
-            <span>ડિજિટલ દસ્તાવેજ સેવા & સુધારો પોર્ટલ (Service Portal)</span>
-          </h2>
-          <p className="text-xs text-slate-600">
-            હયાત દસ્તાવેજમાંથી ઓટો-ફેચ, મલ્ટીપલ સુધારા, કચેરી ફોર્મ, અને સુરક્ષિત સાયબર ટ્રેઝરી ફી ચુકવણી.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleAutoFillDemo}
-          className="px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
-        >
-          <Sparkles size={14} />
-          <span>+ ૧-ક્લિક ડેમો ડેટા ભરો (Fast Demo)</span>
-        </button>
-      </div>
-
-      {/* ── Authenticated Citizen 2FA Session Banner ── */}
-      {citizenSession && (
-        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm text-emerald-950 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-emerald-600 text-white rounded-xl flex items-center justify-center font-bold text-base shrink-0 shadow-sm">
-              ✓
-            </div>
-            <div>
-              <p className="font-extrabold text-emerald-950 text-xs sm:text-sm flex items-center gap-1.5">
-                <span>સત્તાવાર 2FA પ્રમાણિત નાગરિક સત્ર સક્રિય (2FA Authenticated Session)</span>
-                <span className="bg-emerald-200 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  UIDAI લિંક્ડ
-                </span>
-              </p>
-              <p className="text-xs text-emerald-800 mt-0.5">
-                અરજદાર: <strong>{citizenSession.citizenNameGu || citizenSession.citizenName}</strong> &bull; 📱 +91 {citizenSession.mobile} &bull; 🪪 આધાર: XXXX-XXXX-{citizenSession.aadhaarLast4 || "4829"}
-              </p>
-              <p className="text-[11px] text-emerald-700">
-                તમારું નામ, મોબાઈલ, આધાર અને કચેરી સરનામું આપોઆપ ભરાઈ ગયું છે. ફરીથી ટાઇપ કરવાની જરૂર નથી.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href="/track"
-              className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-bold rounded-xl text-xs transition shadow-xs"
-            >
-              મારી અરજીઓ વોલ્ટ જુઓ →
-            </Link>
-
-            <button
-              type="button"
-              onClick={handleDocLogout}
-              className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-              title="સત્ર સમાપ્ત કરો"
-            >
-              <LogOut size={12} />
-              <span>લૉગઆઉટ</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── Step 1: Select Document Service ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 space-y-4">
@@ -1477,37 +1423,110 @@ export default function DocumentServicePortal({
           ૧. સરકારી દસ્તાવેજ / સેવા પસંદ કરો (SELECT DOCUMENT SERVICE):
         </h3>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          {DOCUMENT_SERVICES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => {
-                setSelectedServiceId(s.id);
-                setFetchedProfile(null);
-                setUploadedDocs({});
-                if (s.id === "aadhaar" && serviceMode === "new") {
-                  setAadhaarNumber("");
-                }
-              }}
-              className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between space-y-2 ${
-                selectedServiceId === s.id
-                  ? "border-orange-500 bg-orange-50/60 ring-2 ring-orange-500/20 shadow-xs"
-                  : "border-slate-200 hover:border-slate-300 bg-white"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-2xl">{s.emoji}</span>
-                {selectedServiceId === s.id && (
-                  <CheckCircle2 size={16} className="text-orange-600" />
-                )}
-              </div>
-              <div>
-                <p className="font-bold text-xs text-slate-900 leading-snug">{s.nameGu}</p>
-                <p className="text-[10px] text-slate-500 truncate">{s.nameEn}</p>
-              </div>
-            </button>
-          ))}
+        {/* Search Bar & Category Tabs for 69 Government Services */}
+        <div className="space-y-2.5">
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={serviceSearchQuery}
+              onChange={(e) => setServiceSearchQuery(e.target.value)}
+              placeholder="🔍 ૬૯ સરકારી સેવાઓમાંથી શોધો (દા.ત. ૭/૧૨, આવક દાખલો, રેશનકાર્ડ, પેન્શન, લાયસન્સ, જાતિ, ખેડૂત, શૌચાલય, વીજળી)..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none placeholder:text-slate-400"
+            />
+            {serviceSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setServiceSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scrollbar-none touch-pan-x pb-1.5 text-xs">
+            {[
+              { id: "all", label: `તમામ સેવાઓ (${DOCUMENT_SERVICES.length})` },
+              { id: "revenue", label: "🌾 મહેસૂલ & જમીન (૧૮)" },
+              { id: "supplies", label: "🛒 અન્ન & પુરવઠો (૮)" },
+              { id: "welfare", label: "⚖️ સામાજિક કલ્યાણ (૧૦)" },
+              { id: "panchayat", label: "👶 પંચાયત & સિવિલ (૯)" },
+              { id: "transport", label: "🚗 વાહનવ્યવહાર / RTO (૬)" },
+              { id: "police", label: "👮 ગૃહ & પોલીસ (૫)" },
+              { id: "labour", label: "👷 શ્રમ & શિક્ષણ (૮)" },
+              { id: "energy", label: "⚡ ઉર્જા & વીજળી (૩)" },
+              { id: "central", label: "🪪 કેન્દ્રીય ID (૨)" },
+            ].map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setServiceCategoryFilter(cat.id)}
+                className={`px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer shrink-0 min-h-[38px] flex items-center justify-center select-none active:scale-95 ${
+                  serviceCategoryFilter === cat.id
+                    ? "bg-orange-600 text-white shadow-xs font-black ring-1 ring-orange-500"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 69 Services Responsive Grid with smooth scroll */}
+        <div className="max-h-[460px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+            {DOCUMENT_SERVICES.filter((s) => {
+              // Category filter
+              const matchesCategory = serviceCategoryFilter === "all" || s.category === serviceCategoryFilter;
+              if (!matchesCategory) return false;
+
+              // Search query filter
+              if (serviceSearchQuery.trim()) {
+                const q = serviceSearchQuery.toLowerCase().trim();
+                const matchGu = s.nameGu.toLowerCase().includes(q);
+                const matchEn = s.nameEn.toLowerCase().includes(q);
+                const matchDept = (s.departmentGu || "").toLowerCase().includes(q) || (s.departmentEn || "").toLowerCase().includes(q);
+                return matchGu || matchEn || matchDept;
+              }
+              return true;
+            }).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setSelectedServiceId(s.id);
+                  setFetchedProfile(null);
+                  setUploadedDocs({});
+                  if (s.id === "aadhaar" && serviceMode === "new") {
+                    setAadhaarNumber("");
+                  }
+                }}
+                className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between space-y-2 cursor-pointer ${
+                  selectedServiceId === s.id
+                    ? "border-orange-500 bg-orange-50/70 ring-2 ring-orange-500/20 shadow-xs"
+                    : "border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">{s.emoji}</span>
+                  <div className="flex items-center gap-1">
+                    {selectedServiceId === s.id && (
+                      <CheckCircle2 size={14} className="text-orange-600" />
+                    )}
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                      {s.fee === 0 ? "નિઃશુલ્ક" : `₹${s.fee}`}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <p className="font-bold text-xs text-slate-900 leading-snug line-clamp-2">{s.nameGu}</p>
+                  <p className="text-[10px] text-slate-500 truncate mt-0.5">{s.nameEn}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Dual Mode Switcher: New Issuance vs Correction/Update */}
@@ -1980,7 +1999,7 @@ export default function DocumentServicePortal({
               </div>
 
               {/* Applicant Name Fields */}
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     અરજદારનું પૂરું નામ (ગુજરાતીમાં) *
@@ -2037,7 +2056,7 @@ export default function DocumentServicePortal({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
                       મોબાઈલ નંબર (SMS એલર્ટ) *
@@ -2049,7 +2068,7 @@ export default function DocumentServicePortal({
                       value={mobileNumber}
                       onChange={(e) => setMobileNumber(e.target.value)}
                       placeholder="9825012345"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono min-h-[42px]"
                     />
                   </div>
 
@@ -2063,7 +2082,7 @@ export default function DocumentServicePortal({
                         value={emailAddress}
                         onChange={(e) => setEmailAddress(e.target.value)}
                         placeholder="citizen@gujarat.gov.in"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-[42px]"
                       />
                     </div>
                   ) : (
@@ -2079,7 +2098,7 @@ export default function DocumentServicePortal({
                         value={aadhaarNumber}
                         onChange={(e) => setAadhaarNumber(e.target.value)}
                         placeholder="4829"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono min-h-[42px]"
                       />
                     </div>
                   )}
@@ -2101,7 +2120,7 @@ export default function DocumentServicePortal({
                 )}
 
                 {/* District & Taluka Selectors */}
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">જિલ્લો (District) *</label>
                     <select
@@ -2140,18 +2159,31 @@ export default function DocumentServicePortal({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    ગામ / સોસાયટી / રહેઠાણ સરનામું *
+                    ગામ / શહેર (Village / City) *
                   </label>
-                  <input
-                    type="text"
-                    value={village || streetSociety}
-                    onChange={(e) => {
-                      setVillage(e.target.value);
-                      setStreetSociety(e.target.value);
-                    }}
-                    placeholder="દા.ત. ઘર નં. ૧૨, પટેલ વાસ, ગોમટા ગામ"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={village}
+                      onChange={(e) => {
+                        setVillage(e.target.value);
+                      }}
+                      className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="">-- ગામ / શહેર પસંદ કરો --</option>
+                      {getVillagesForTaluka(taluka).map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={streetSociety}
+                      onChange={(e) => setStreetSociety(e.target.value)}
+                      placeholder="સોસાયટી / શેરી / મકાન નંબર"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Service Specific Fields */}
@@ -2201,6 +2233,265 @@ export default function DocumentServicePortal({
                           value={occupation}
                           onChange={(e) => setOccupation(e.target.value)}
                           className="w-full px-2 py-1 bg-white border border-blue-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "caste" && (
+                  <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-purple-900 block">⚖️ જાતિ / નોન-ક્રીમીલેયર વિગતો:</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-purple-800 block">પેટા જાતિ (Sub-Caste)</span>
+                        <input
+                          type="text"
+                          value={subCaste}
+                          onChange={(e) => setSubCaste(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-xs"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-purple-800 block">ધર્મ (Religion)</span>
+                        <input
+                          type="text"
+                          value={religion}
+                          onChange={(e) => setReligion(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "land_records" && (
+                  <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-emerald-900 block">🌾 જમીન મહેસૂલી વિગતો (e-Dhara RoR 7/12):</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <span className="text-[10px] text-emerald-800 block">ખાતા નંબર *</span>
+                        <input
+                          type="text"
+                          value={khataNumber}
+                          onChange={(e) => setKhataNumber(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-emerald-800 block">સર્વે / બ્લોક નંબર *</span>
+                        <input
+                          type="text"
+                          value={surveyNumber}
+                          onChange={(e) => setSurveyNumber(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-emerald-800 block">ક્ષેત્રફળ (હેક્ટર)</span>
+                        <input
+                          type="text"
+                          value={landArea}
+                          onChange={(e) => setLandArea(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "birth_cert" && (
+                  <div className="bg-sky-50/60 border border-sky-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-sky-900 block">👶 જન્મ નોંધણી વિગત (Civil Registration System):</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-sky-800 block">બાળકનું નામ (Child Name)</span>
+                        <input
+                          type="text"
+                          value={childName}
+                          onChange={(e) => setChildName(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-sky-200 rounded text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-sky-800 block">જન્મ સ્થળ (હોસ્પિટલ/ઘર)</span>
+                        <input
+                          type="text"
+                          value={birthPlace}
+                          onChange={(e) => setBirthPlace(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-sky-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "death_cert" && (
+                  <div className="bg-slate-100 border border-slate-300 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-slate-800 block">🕊️ મરણ નોંધણી વિગત:</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <span className="text-[10px] text-slate-600 block">મૃતકનું પૂરું નામ *</span>
+                        <input
+                          type="text"
+                          value={deceasedName}
+                          onChange={(e) => setDeceasedName(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-600 block">મરણ તારીખ *</span>
+                        <input
+                          type="date"
+                          value={deathDate}
+                          onChange={(e) => setDeathDate(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-600 block">મરણ સ્થળ</span>
+                        <input
+                          type="text"
+                          value={deathPlace}
+                          onChange={(e) => setDeathPlace(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "ews_cert" && (
+                  <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-indigo-900 block">🏛️ EWS મિલકત માપદંડ વિગતો:</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-indigo-800 block">મકાન કાર્પેટ એરિયા</span>
+                        <input
+                          type="text"
+                          value={ewsPropertyType}
+                          onChange={(e) => setEwsPropertyType(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-indigo-200 rounded text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-indigo-800 block">વાર્ષિક આવક મર્યાદા</span>
+                        <span className="block px-2 py-1 bg-white border border-indigo-200 rounded text-xs font-bold text-emerald-700">
+                          ₹ ૧,૮૦,૦૦૦ (મર્યાદા ₹ ૮ લાખથી ઓછી)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "domicile_cert" && (
+                  <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-amber-900 block">🏠 ડોમિસાઇલ વસવાટ ખરાઈ:</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-amber-800 block">ગુજરાતમાં સતત વસવાટ વર્ષો</span>
+                        <input
+                          type="text"
+                          value={domicileYears}
+                          onChange={(e) => setDomicileYears(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-amber-800 block">કલેક્ટર કચેરી</span>
+                        <span className="block px-2 py-1 bg-white border border-amber-200 rounded text-xs text-slate-700">
+                          જિલ્લા કલેક્ટર કચેરી, રાજકોટ
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "senior_citizen" && (
+                  <div className="bg-rose-50/60 border border-rose-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-rose-900 block">👴 વરિષ્ઠ નાગરિક આરોગ્ય & ઇમરજન્સી:</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-rose-800 block">બ્લડ ગ્રુપ (Blood Group)</span>
+                        <select
+                          value={seniorBloodGroup}
+                          onChange={(e) => setSeniorBloodGroup(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-xs font-bold"
+                        >
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-rose-800 block">ઇમરજન્સી સંપર્ક નંબર</span>
+                        <input
+                          type="tel"
+                          value={seniorEmergencyPhone}
+                          onChange={(e) => setSeniorEmergencyPhone(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-xs font-mono font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "driving_licence" && (
+                  <div className="bg-teal-50/60 border border-teal-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-teal-900 block">🚗 વાહન વર્ગ & RTO વિગત (SARATHI):</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-teal-800 block">વાહન વર્ગ (Vehicle Class)</span>
+                        <select
+                          value={drivingClass}
+                          onChange={(e) => setDrivingClass(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-teal-200 rounded text-xs font-bold"
+                        >
+                          <option value="MCWG">MCWG (મોટરસાયકલ ગિયરવાળી)</option>
+                          <option value="LMV">LMV (લાઇટ મોટર વ્હીકલ - કાર)</option>
+                          <option value="MCWG & LMV">MCWG & LMV (બાઇક અને કાર બંને)</option>
+                          <option value="TRANSPORT">ટ્રાન્સપોર્ટ / કોમર્શિયલ વાહન</option>
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-teal-800 block">RTO કચેરી</span>
+                        <input
+                          type="text"
+                          value={rtoOfficeName}
+                          onChange={(e) => setRtoOfficeName(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-teal-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {service.id === "marriage_cert" && (
+                  <div className="bg-pink-50/60 border border-pink-200 rounded-xl p-2.5 space-y-2 text-xs">
+                    <span className="font-bold text-pink-900 block">💍 લગ્ન નોંધણી વિગતો:</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-pink-800 block">લગ્ન તારીખ *</span>
+                        <input
+                          type="date"
+                          value={marriageDate}
+                          onChange={(e) => setMarriageDate(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-pink-200 rounded text-xs font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-pink-800 block">પત્નીનું પૂરું નામ *</span>
+                        <input
+                          type="text"
+                          value={spouseName}
+                          onChange={(e) => setSpouseName(e.target.value)}
+                          placeholder="દા.ત. પ્રિયાબેન હરી પટેલ"
+                          className="w-full px-2 py-1 bg-white border border-pink-200 rounded text-xs font-bold"
                         />
                       </div>
                     </div>
@@ -2331,6 +2622,7 @@ export default function DocumentServicePortal({
                       type="button"
                       onClick={async () => {
                         const demoList = [
+                          { id: "applicant_photo", url: "/demo-docs/aadhaar_photo_hq.png", name: "aadhaar_photo_hq.png" },
                           { id: "birth_proof", url: "/demo-docs/1_birth_certificate_khunt_harkishan.png", name: "1_birth_certificate_khunt_harkishan.png" },
                           { id: "address_proof", url: "/demo-docs/2_electricity_bill_pgvcl_gondal.png", name: "2_electricity_bill_pgvcl_gondal.png" },
                           { id: "photo_id", url: "/demo-docs/3_pan_card_khunt_harkishan.png", name: "3_pan_card_khunt_harkishan.png" },
@@ -2353,14 +2645,23 @@ export default function DocumentServicePortal({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-blue-200/60 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-blue-200/60 text-xs">
+                    <a
+                      href="/demo-docs/aadhaar_photo_hq.png"
+                      download="aadhaar_photo_hq.png"
+                      target="_blank"
+                      className="p-2 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-xl flex items-center justify-between font-semibold text-blue-900 transition shadow-2xs"
+                    >
+                      <span className="truncate text-[11px]">📥 ૧. પાસપોર્ટ ફોટો</span>
+                      <Download size={13} className="text-blue-700 shrink-0 ml-1" />
+                    </a>
                     <a
                       href="/demo-docs/1_birth_certificate_khunt_harkishan.png"
                       download="1_birth_certificate_khunt_harkishan.png"
                       target="_blank"
                       className="p-2 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-xl flex items-center justify-between font-semibold text-blue-900 transition shadow-2xs"
                     >
-                      <span className="truncate text-[11px]">📥 ૧. જન્મનો દાખલો</span>
+                      <span className="truncate text-[11px]">📥 ૨. જન્મનો દાખલો</span>
                       <Download size={13} className="text-blue-700 shrink-0 ml-1" />
                     </a>
                     <a
@@ -2369,7 +2670,7 @@ export default function DocumentServicePortal({
                       target="_blank"
                       className="p-2 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-xl flex items-center justify-between font-semibold text-blue-900 transition shadow-2xs"
                     >
-                      <span className="truncate text-[11px]">📥 ૨. PGVCL લાઈટ બિલ</span>
+                      <span className="truncate text-[11px]">📥 ૩. PGVCL લાઈટ બિલ</span>
                       <Download size={13} className="text-blue-700 shrink-0 ml-1" />
                     </a>
                     <a
@@ -2378,7 +2679,7 @@ export default function DocumentServicePortal({
                       target="_blank"
                       className="p-2 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-xl flex items-center justify-between font-semibold text-blue-900 transition shadow-2xs"
                     >
-                      <span className="truncate text-[11px]">📥 ૩. PAN કાર્ડ (ID)</span>
+                      <span className="truncate text-[11px]">📥 ૪. PAN કાર્ડ (ID)</span>
                       <Download size={13} className="text-blue-700 shrink-0 ml-1" />
                     </a>
                   </div>
@@ -2455,7 +2756,15 @@ export default function DocumentServicePortal({
 
                       {/* Upload Controls (JPG, PNG, PDF) */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-black/5">
-                        <div className="flex items-center gap-2 text-xs">
+                        <div className="flex items-center gap-2.5 text-xs">
+                          {docItem.id === "applicant_photo" && isValid && (docState?.base64 || userUploadedPhoto) && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={docState?.base64 || userUploadedPhoto}
+                              alt="Passport Photo"
+                              className="w-10 h-12 object-cover rounded-lg border-2 border-emerald-500 shadow-xs shrink-0"
+                            />
+                          )}
                           {docState?.fileName ? (
                             <span className="font-mono text-slate-700 font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 truncate max-w-[220px]">
                               <FileText size={13} className="text-orange-600" />

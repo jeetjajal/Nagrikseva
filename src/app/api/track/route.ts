@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
     const id = searchParams.get("id")?.trim();
     const search = searchParams.get("search")?.trim() || "";
     const district = searchParams.get("district")?.trim() || "";
+    const taluka = searchParams.get("taluka")?.trim() || "";
+    const village = searchParams.get("village")?.trim() || "";
     const status = searchParams.get("status")?.trim() || "";
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "10", 10);
@@ -127,6 +129,8 @@ export async function GET(req: NextRequest) {
     const data = queryApplications({
       search,
       district,
+      taluka,
+      village,
       status,
       page,
       limit,
@@ -156,7 +160,7 @@ export async function POST(req: NextRequest) {
       district = "Rajkot",
       districtGu = "રાજકોટ",
       taluka = "Gondal",
-      village = "Gomta",
+      village = "Momta",
       schemeId = "aadhaar-update",
       schemeName = "Aadhaar Card Update",
       schemeNameGu = "આધાર કાર્ડ સુધારો",
@@ -179,6 +183,8 @@ export async function POST(req: NextRequest) {
       correctionsRequested = [],
       oldVsNewValues = {},
       kacheriDetails = {},
+      citizenPhoto,
+      userPhoto,
     } = body;
 
     const resolvedCitizenName = citizenName || applicantName || "Citizen Applicant";
@@ -254,6 +260,8 @@ export async function POST(req: NextRequest) {
       correctionsRequested,
       oldVsNewValues,
       kacheriDetails,
+      citizenPhoto: citizenPhoto || userPhoto || undefined,
+      userPhoto: userPhoto || citizenPhoto || undefined,
     };
 
     // Save into server large-dataset in-memory cache
