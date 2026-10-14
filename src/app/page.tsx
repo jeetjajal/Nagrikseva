@@ -1,8 +1,11 @@
+"use client";
+
 import Navbar from "@/components/Navbar";
 import ChatBot from "@/components/ChatBot";
 import MobileGreetingCard from "@/components/MobileGreetingCard";
 import Link from "next/link";
 import DynamicFeaturedSchemes from "@/components/DynamicFeaturedSchemes";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   LayoutGrid,
   Bot,
@@ -15,50 +18,51 @@ import {
   Search,
 } from "lucide-react";
 
-const QUICK_SERVICES = [
-  { icon: Sparkles,    label: "પાત્રતા કેલ્ક્યુલેટર (Eligibility)", href: "/eligibility" },
-  { icon: IndianRupee, label: "💰 કુટુંબ લાભ કેલ્ક્યુલેટર & પાસ", href: "/benefit-calculator" },
-  { icon: MapPin,      label: "નજીકની કચેરી (Jan Seva Locator)",   href: "/locator" },
-  { icon: FileText,    label: "રેશન કાર્ડ ગાઈડ & ચેકલિસ્ટ",        href: "/documents?type=ration" },
-  { icon: HeartPulse,  label: "આયુષ્માન કાર્ડ કેવી રીતે કઢાવવું?",  href: "/documents?type=health" },
-];
-
-/* ── PhonePe / UMANG Style 4-Column Quick Services (ONLY unique items NOT in Bottom Nav) ── */
-const SUPER_APP_GRID = [
-  {
-    icon: Sparkles,
-    label: "પાત્રતા",
-    href: "/eligibility",
-    bg: "bg-orange-50 text-orange-600 border-orange-200/70",
-  },
-  {
-    icon: IndianRupee,
-    label: "લાભ ગણો",
-    href: "/benefit-calculator",
-    bg: "bg-emerald-50 text-emerald-600 border-emerald-200/70",
-  },
-  {
-    icon: Search,
-    label: "અરજી ટ્રેક",
-    href: "/track",
-    bg: "bg-purple-50 text-purple-600 border-purple-200/70",
-  },
-  {
-    icon: FileText,
-    label: "દસ્તાવેજ",
-    href: "/documents?type=ration",
-    bg: "bg-amber-50 text-amber-600 border-amber-200/70",
-  },
-];
-
-const STATS = [
-  { num: "26+",  label: "સરકારી યોજનાઓ",          shortLabel: "યોજનાઓ",   emoji: "📋" },
-  { num: "16",   label: "ભાષાઓ (ગુજ/હિં/અંગ્રેજી)", shortLabel: "ભાષાઓ",    emoji: "🗣️" },
-  { num: "24/7", label: "AI & વોઈસ સપોર્ટ",        shortLabel: "AI વોઈસ",  emoji: "🎙️" },
-  { num: "100%", label: "મફત નાગરિક સેવા",          shortLabel: "મફત સેવા", emoji: "✅" },
-];
-
 export default function Home() {
+  const { t, currentLang } = useLanguage();
+
+  const quickServices = [
+    { icon: Sparkles,    label: t.home.quickServicesList[0]?.label || "પાત્રતા કેલ્ક્યુલેટર (Eligibility)", href: "/eligibility" },
+    { icon: IndianRupee, label: t.home.quickServicesList[1]?.label || "💰 કુટુંબ લાભ કેલ્ક્યુલેટર & પાસ", href: "/benefit-calculator" },
+    { icon: MapPin,      label: t.home.quickServicesList[2]?.label || "નજીકની કચેરી (Jan Seva Locator)",   href: "/locator" },
+    { icon: FileText,    label: t.home.quickServicesList[3]?.label || "રેશન કાર્ડ ગાઈડ & ચેકલિસ્ટ",        href: "/documents?type=ration" },
+    { icon: HeartPulse,  label: t.home.quickServicesList[4]?.label || "આયુષ્માન કાર્ડ કેવી રીતે કઢાવવું?",  href: "/documents?type=health" },
+  ];
+
+  const superAppGrid = [
+    {
+      icon: Sparkles,
+      label: t.home.superAppEligibility,
+      href: "/eligibility",
+      bg: "bg-orange-50 text-orange-600 border-orange-200/70",
+    },
+    {
+      icon: IndianRupee,
+      label: t.home.superAppBenefits,
+      href: "/benefit-calculator",
+      bg: "bg-emerald-50 text-emerald-600 border-emerald-200/70",
+    },
+    {
+      icon: Search,
+      label: t.home.superAppTrack,
+      href: "/track",
+      bg: "bg-purple-50 text-purple-600 border-purple-200/70",
+    },
+    {
+      icon: FileText,
+      label: t.home.superAppDocs,
+      href: "/documents?type=ration",
+      bg: "bg-amber-50 text-amber-600 border-amber-200/70",
+    },
+  ];
+
+  const stats = [
+    { num: "26+",  label: t.home.statSchemes,     shortLabel: t.home.statSchemesShort,   emoji: "📋" },
+    { num: "16",   label: t.home.statLanguages,   shortLabel: t.home.statLanguagesShort, emoji: "🗣️" },
+    { num: "24/7", label: t.home.statAiVoice,     shortLabel: t.home.statAiVoiceShort,  emoji: "🎙️" },
+    { num: "100%", label: t.home.statFreeService, shortLabel: t.home.statFreeServiceShort, emoji: "✅" },
+  ];
+
   return (
     <>
       <Navbar />
@@ -77,15 +81,15 @@ export default function Home() {
             <div className="flex items-center justify-between mb-2.5 px-0.5">
               <h2 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-orange-500 shrink-0" />
-                <span>ઝડપી નાગરિક સેવાઓ (Quick Tools)</span>
+                <span>{t.home.quickToolsHeading}</span>
               </h2>
               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                1-Click
+                {t.home.oneClickBadge}
               </span>
             </div>
 
             <div className="grid grid-cols-4 gap-2">
-              {SUPER_APP_GRID.map(({ icon: Icon, label, href, bg }) => (
+              {superAppGrid.map(({ icon: Icon, label, href, bg }) => (
                 <Link
                   key={href}
                   href={href}
@@ -106,7 +110,7 @@ export default function Home() {
 
           {/* 3. Compact 4-Column Bento Stats Strip */}
           <div className="grid grid-cols-4 gap-2">
-            {STATS.map((s) => (
+            {stats.map((s) => (
               <div
                 key={s.label}
                 className="bg-white rounded-2xl py-2 px-1.5 border border-slate-200/80 shadow-2xs text-center"
@@ -126,7 +130,7 @@ export default function Home() {
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
-            💻 DESKTOP & TABLET HERO + STATS (Preserved 100% Intact)
+            💻 DESKTOP & TABLET HERO + STATS
            ══════════════════════════════════════════════════════════════════ */}
         <section className="hidden sm:block bg-gradient-to-br from-orange-500 via-orange-400 to-green-600 text-white py-12 sm:py-16 px-4">
           <div className="max-w-3xl mx-auto text-center">
@@ -143,10 +147,10 @@ export default function Home() {
               NagrikSeva <span className="text-yellow-300">AI</span>
             </h1>
             <p className="text-orange-100 text-base sm:text-lg mb-1">
-              AI-Powered Digital Public Infrastructure Assistant
+              {t.home.heroSubtitle}
             </p>
             <p className="text-orange-200 text-xs sm:text-sm mb-7">
-              સરકારી યોજનાઓ, દસ્તાવેજ સહાય, પાત્રતા ચકાસણી અને સ્થિતિ ટ્રેકિંગ — બધું એક જ જગ્યાએ
+              {t.home.heroDesc}
             </p>
 
             <div className="flex flex-wrap gap-2.5 justify-center">
@@ -154,19 +158,19 @@ export default function Home() {
                 href="/eligibility"
                 className="flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition shadow-lg active:scale-95"
               >
-                <Sparkles size={15} /> પાત્રતા ચકાસો (Eligibility)
+                <Sparkles size={15} /> {t.home.checkEligibilityHero}
               </Link>
               <Link
                 href="/benefit-calculator"
                 className="flex items-center gap-1.5 bg-green-700 hover:bg-green-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition shadow active:scale-95"
               >
-                💰 લાભ ગણો & WhatsApp પાસ
+                {t.home.calcBenefitsHero}
               </Link>
               <Link
                 href="/locator"
                 className="flex items-center gap-1.5 bg-orange-700/80 hover:bg-orange-800 text-white px-3.5 py-2.5 rounded-xl font-medium text-xs sm:text-sm transition border border-white/20 active:scale-95"
               >
-                <MapPin size={15} /> કચેરી લોકેટર
+                <MapPin size={15} /> {t.home.kacheriLocatorHero}
               </Link>
             </div>
           </div>
@@ -175,7 +179,7 @@ export default function Home() {
         {/* ── Desktop Stats ── */}
         <section className="hidden sm:block bg-white border-b shadow-sm">
           <div className="max-w-4xl mx-auto px-4 py-5 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-center">
-            {STATS.map((s) => (
+            {stats.map((s) => (
               <div key={s.label} className="py-2">
                 <div className="text-xl sm:text-2xl mb-0.5">{s.emoji}</div>
                 <div className="text-xl sm:text-2xl font-bold text-orange-500">{s.num}</div>
@@ -194,19 +198,19 @@ export default function Home() {
             {/* Smart Eligibility Banner */}
             <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-sm">
               <span className="text-xs font-bold uppercase tracking-wider bg-white/25 px-2.5 py-0.5 rounded-full inline-block mb-2">
-                નવું ફીચર
+                {t.home.smartEligibilityBadge}
               </span>
               <h3 className="font-bold text-base leading-snug">
-                તમે કઈ કઈ સરકારી યોજનાના હકદાર છો?
+                {t.home.smartEligibilityTitle}
               </h3>
               <p className="text-xs text-orange-100 mt-1 mb-3">
-                ઉંમર, આવક અને વ્યવસાય નાખીને ૧ મિનિટમાં જાણી લો!
+                {t.home.smartEligibilityDesc}
               </p>
               <Link
                 href="/eligibility"
                 className="inline-flex items-center gap-1 bg-white text-orange-600 text-xs font-bold px-3.5 py-2 rounded-xl hover:bg-orange-50 transition shadow-sm"
               >
-                હમણાં જ ચેક કરો <ChevronRight size={13} />
+                {t.home.checkNowBtn} <ChevronRight size={13} />
               </Link>
             </div>
 
@@ -218,11 +222,11 @@ export default function Home() {
               <div className="px-4 py-3 border-b border-blue-100">
                 <h3 className="font-bold text-gray-700 text-sm flex items-center gap-2">
                   <FileText size={15} className="text-blue-500" />
-                  ઝડપી સેવાઓ (Quick Access)
+                  {t.home.quickServicesTitle}
                 </h3>
               </div>
               <div className="divide-y divide-blue-100">
-                {QUICK_SERVICES.map(({ icon: Icon, label, href }) => (
+                {quickServices.map(({ icon: Icon, label, href }) => (
                   <Link
                     key={label}
                     href={href}
@@ -244,13 +248,13 @@ export default function Home() {
             <div className="flex items-center justify-between mb-2.5 px-0.5">
               <h2 className="font-extrabold text-slate-800 text-xs sm:text-base flex items-center gap-1.5">
                 <Bot size={17} className="text-orange-500 shrink-0" />
-                <span>નાગરિકસેવા AI સાથે વાત કરો</span>
+                <span>{t.home.chatBotTitle}</span>
               </h2>
               <Link
                 href="/chat"
                 className="hidden sm:flex text-xs font-bold text-orange-600 hover:underline items-center gap-0.5 whitespace-nowrap"
               >
-                સંપૂર્ણ સ્ક્રીનમાં ખોલો <ChevronRight size={12} />
+                {t.home.openFullScreen} <ChevronRight size={12} />
               </Link>
             </div>
             <ChatBot />

@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { Scheme } from "@/types";
 import { CATEGORY_LABELS } from "@/lib/schemes-data";
+import { useLanguage } from "@/context/LanguageContext";
+import {
+  getLocalizedSchemeName,
+  getLocalizedSchemeBenefits,
+  getLocalizedCategoryLabel,
+} from "@/lib/schemes-i18n";
 
 interface SchemeCardProps {
   scheme: Scheme;
@@ -22,8 +28,12 @@ const CATEGORY_BADGE_STYLES: Record<string, string> = {
 };
 
 export default function SchemeCard({ scheme, compact = false }: SchemeCardProps) {
+  const { currentLang } = useLanguage();
   const cat = CATEGORY_LABELS[scheme.category];
   const badgeStyle = CATEGORY_BADGE_STYLES[scheme.category] ?? "bg-gray-100 text-gray-700";
+  const localizedName = getLocalizedSchemeName(scheme, currentLang);
+  const localizedBenefits = getLocalizedSchemeBenefits(scheme, currentLang);
+  const localizedCategory = getLocalizedCategoryLabel(scheme.category, currentLang);
 
   /* ── COMPACT MODE (used in sidebars / small lists) ── */
   if (compact) {
@@ -33,9 +43,9 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
           <span className="text-2xl flex-shrink-0 w-9 text-center">{scheme.icon}</span>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm text-gray-800 truncate group-hover:text-orange-600 leading-tight">
-              {scheme.nameGu || scheme.name}
+              {localizedName}
             </p>
-            <p className="text-xs text-gray-500 truncate mt-0.5">{scheme.benefits[0]}</p>
+            <p className="text-xs text-gray-500 truncate mt-0.5">{localizedBenefits[0] || scheme.benefits[0]}</p>
           </div>
           <span className="text-gray-300 group-hover:text-orange-400 flex-shrink-0">›</span>
         </div>
@@ -52,13 +62,13 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
         <span className="text-3xl flex-shrink-0 leading-none mt-0.5">{scheme.icon}</span>
         <div className="min-w-0 flex-1">
           <h3 className="font-bold text-gray-800 text-sm leading-snug line-clamp-1 group-hover:text-orange-600 transition">
-            {scheme.nameGu || scheme.name}
+            {localizedName}
           </h3>
           <p className="text-orange-600 text-[11px] font-medium mt-0.5 line-clamp-1">
-            {scheme.name !== scheme.nameGu ? scheme.name : ""}
+            {scheme.name !== localizedName ? scheme.name : ""}
           </p>
           <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeStyle}`}>
-            {cat.icon} {cat.labelGu || cat.label}
+            {cat.icon} {localizedCategory || cat.labelGu || cat.label}
           </span>
         </div>
       </div>
@@ -68,7 +78,7 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
         <p className="text-gray-600 text-xs leading-relaxed line-clamp-2">{scheme.description}</p>
 
         <ul className="space-y-0.5">
-          {scheme.benefits.slice(0, 2).map((benefit, i) => (
+          {(localizedBenefits.length > 0 ? localizedBenefits : scheme.benefits).slice(0, 2).map((benefit, i) => (
             <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
               <span className="text-green-500 flex-shrink-0 mt-0.5">✓</span>
               <span className="line-clamp-1">{benefit}</span>
@@ -76,14 +86,14 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
           ))}
           {scheme.benefits.length > 2 && (
             <li className="text-[11px] text-orange-500 font-medium pl-4">
-              +{scheme.benefits.length - 2} વધુ લાભ →
+              +{scheme.benefits.length - 2} {currentLang === "mr" ? "अधिक लाभ →" : currentLang === "hi" ? "और लाभ →" : currentLang === "en" ? "more benefits →" : currentLang === "ml" ? "കൂടുതൽ ആനുകൂല്യങ്ങൾ →" : "વધુ લાભ →"}
             </li>
           )}
         </ul>
 
         {/* Meta row */}
         <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-gray-50">
-          <span>📄 {scheme.documents.length} દસ્તાવેજ</span>
+          <span>📄 {scheme.documents.length} {currentLang === "mr" ? "कागदपत्रे" : currentLang === "hi" ? "दस्तावेज़" : currentLang === "en" ? "Documents" : currentLang === "ml" ? "രേഖകൾ" : "દસ્તાવેજ"}</span>
           <span className="text-blue-500 truncate max-w-[130px] text-right">{scheme.ministry}</span>
         </div>
       </div>
@@ -94,7 +104,7 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
           href={`/schemes/${scheme.id}`}
           className="flex-1 text-center bg-orange-500 hover:bg-orange-600 text-white py-1.5 rounded-lg text-xs font-bold active:scale-95 transition"
         >
-          વિગત જુઓ
+          {currentLang === "mr" ? "तपशील पहा" : currentLang === "hi" ? "विवरण देखें" : currentLang === "en" ? "View Details" : currentLang === "ml" ? "വിശദാംശങ്ങൾ കാണുക" : "વિગત જુઓ"}
         </Link>
         {scheme.applicationUrl && (
           <a
@@ -103,7 +113,7 @@ export default function SchemeCard({ scheme, compact = false }: SchemeCardProps)
             rel="noopener noreferrer"
             className="flex-1 text-center border border-green-600 text-green-700 hover:bg-green-50 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition"
           >
-            અરજી →
+            {currentLang === "mr" ? "अर्ज करा →" : currentLang === "hi" ? "आवेदन करें →" : currentLang === "en" ? "Apply →" : currentLang === "ml" ? "അപേക്ഷിക്കുക →" : "અરજી →"}
           </a>
         )}
       </div>

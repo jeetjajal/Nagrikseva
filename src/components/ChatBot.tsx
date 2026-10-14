@@ -36,6 +36,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "@/context/LanguageContext";
+import { getLocalizedCategoryPrompts, getLocalizedChatGreeting } from "@/lib/chatbot-i18n";
 
 let globalSessionSequence = 1000;
 function createNewSessionId(): string {
@@ -82,30 +83,6 @@ interface LiveLocationInfo {
   nearestOfficeGu?: string;
   distanceKm?: number;
 }
-
-const CATEGORY_PROMPTS: Record<string, { label: string; query: string; icon: string }[]> = {
-  gu: [
-    { label: "ખેડૂત યોજનાઓ", query: "ખેડૂતો માટે PM કિસાન અને સબસિડીના સત્તાવાર કાયદા અને નિયમો શું છે?", icon: "🌾" },
-    { label: "આયુષ્માન ભારત", query: "આયુષ્માન ભારત PM-JAY હેઠળ ₹10 લાખ કેશલેસ સારવારની પાત્રતા અને નિયમો શું છે?", icon: "🏥" },
-    { label: "રેશનકાર્ડ સહાય", query: "રેશનકાર્ડમાં નવું નામ ઉમેરવા અથવા સુધારા માટે કયો કાયદો અને પુરાવા જોઈએ?", icon: "📜" },
-    { label: "PM આવાસ યોજના", query: "PM આવાસ યોજના હેઠળ પાકા મકાન માટે ₹1.20 લાખ સહાયના નિયમો શું છે?", icon: "🏠" },
-    { label: "અરજી ટ્રેકિંગ", query: "મારી અરજી APP-GUJ-8038 લાઈવ ટ્રેક કરો", icon: "🔍" },
-  ],
-  hi: [
-    { label: "किसान योजनाएं", query: "किसानों के लिए PM किसान योजना और सब्सिडी के नियम क्या हैं?", icon: "🌾" },
-    { label: "आयुष्मान भारत", query: "आयुष्मान भारत कार्ड के तहत ₹10 लाख मुफ्त इलाज के नियम और पात्रता क्या है?", icon: "🏥" },
-    { label: "राशन कार्ड सेवा", query: "राशन कार्ड में नया नाम जोड़ने के लिए आवश्यक दस्तावेज क्या हैं?", icon: "📜" },
-    { label: "PM आवास योजना", query: "PM आवास योजना के तहत मकान निर्माण सहायता के नियम क्या हैं?", icon: "🏠" },
-    { label: "आवेदन ट्रैकिंग", query: "मेरा आवेदन APP-GUJ-8038 लाइव ट्रैक करें", icon: "🔍" },
-  ],
-  en: [
-    { label: "Farmer Schemes", query: "What are the official rules and eligibility for PM Kisan Samman Nidhi?", icon: "🌾" },
-    { label: "Ayushman Card", query: "How to check eligibility for Ayushman Bharat PM-JAY Rs 10 Lakh health cover?", icon: "🏥" },
-    { label: "Ration Card", query: "What are the rules and documents to add a new member to Ration Card under NFSA?", icon: "📜" },
-    { label: "Housing (PMAY)", query: "What are the eligibility criteria and subsidy under PM Awas Yojana?", icon: "🏠" },
-    { label: "Track Application", query: "Track my application APP-GUJ-8038 status live", icon: "🔍" },
-  ],
-};
 
 function renderFormattedMessage(text: string) {
   const lines = text.split("\n");
@@ -166,7 +143,7 @@ function renderFormattedMessage(text: string) {
 export default function ChatBot() {
   const pathname = usePathname();
   const isChatPage = pathname === "/chat";
-  const { currentLang } = useLanguage();
+  const { currentLang, t } = useLanguage();
 
   // Citizen Session (initialized null so SSR and initial client hydration match 100%)
   const [citizenSession, setCitizenSession] = useState<CitizenSession | null>(null);
@@ -185,27 +162,7 @@ export default function ChatBot() {
 
   const getGreetingForLang = useCallback((lang: string, cit?: CitizenSession | null) => {
     const citizenName = cit?.citizenNameGu || cit?.citizenName;
-    const greeting = citizenName ? `માનનીય ${citizenName}! ` : "";
-
-    if (lang === "hi") {
-      return (
-        `${greeting}नमस्ते! 🙏 मैं NagrikSeva AI हूँ।\n\n` +
-        `मैं आपको सरकारी योजनाओं, पात्रता, नियमों और आधिकारिक अधिनियमों (GRTSA 2013, NFSA 2013) के तहत प्रामाणिक जानकारी और आवेदन सहायता प्रदान करूँगा।\n\n` +
-        `📎 आप कोई भी सरकारी दस्तावेज (आधार, राशन कार्ड, 7/12, आय प्रमाण पत्र) ड्रैग और ड्रॉप करके या अपलोड करके सरकारी नियमों अनुसार सत्यापन भी करवा सकते हैं!`
-      );
-    }
-    if (lang === "en") {
-      return (
-        `${greeting}Namaste! 🙏 I am NagrikSeva AI.\n\n` +
-        `I provide verified government scheme guidance, legal Act citations (GRTSA 2013, NFSA 2013), eligibility criteria, required documents, and live application tracking.\n\n` +
-        `📎 You can drag and drop or upload any government document (Aadhaar, Ration Card, 7/12, Income Certificate) to verify government compliance and find all eligible schemes!`
-      );
-    }
-    return (
-      `${greeting}નમસ્તે! 🙏 હું NagrikSeva AI સત્તાવાર ઈ-ગવર્નન્સ સહાયક છું.\n\n` +
-      `હું તમને સરકારી યોજનાઓ, પાત્રતા, નિયમો, અને કાનૂની અધિકારો (GRTSA ૨૦૧૩, NFSA ૨૦૧૩) ની પ્રમાણિત માહિતી અને દસ્તાવેજ સહાય આપીશ.\n\n` +
-      `📎 તમે તમારો કોઈપણ સરકારી દસ્તાવેજ કે ફોટો (આધાર, રેશનકાર્ડ, ૭/૧૨, આવકનો દાખલો) સીધો અહીં ડ્રોપ કરીને સરકારી નિયમો મુજબ ખરાઈ અને માન્ય યોજનાઓ જાણી શકો છો!`
-    );
+    return getLocalizedChatGreeting(lang, citizenName);
   }, []);
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -622,7 +579,15 @@ export default function ChatBot() {
       windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("તમારા બ્રાઉઝરમાં વોઈસ ઈનપુટ સપોર્ટ નથી. કૃપા કરીને Chrome અથવા Edge વાપરો.");
+      const unsupportedMsg =
+        currentLang === "mr"
+          ? "तुमच्या ब्राऊझरमध्ये व्हॉइस इनपुट सपोर्ट नाही. कृपया Chrome किंवा Edge वापरा."
+          : currentLang === "hi"
+          ? "आपके ब्राउज़र में वॉइस इनपुट सपोर्ट नहीं है। कृपया Chrome या Edge का उपयोग करें।"
+          : currentLang === "en"
+          ? "Voice input is not supported in this browser. Please use Chrome or Edge."
+          : "તમારા બ્રાઉઝરમાં વોઈસ ઈનપુટ સપોર્ટ નથી. કૃપા કરીને Chrome અથવા Edge વાપરો.";
+      alert(unsupportedMsg);
       return;
     }
 
@@ -825,11 +790,19 @@ export default function ChatBot() {
     } catch {
       const errorMsg: Message = {
         role: "model",
-        text: "⚠️ નેટવર્ક જોડાણમાં વિલંબ થયો છે. ગુજરાત જાહેર સેવા હક અધિનિયમ, ૨૦૧૩ હેઠળ તમામ સેવાઓ જનસેવા કેન્દ્ર પર પણ ઉપલબ્ધ છે.",
+        text: t.chat.networkError,
         timestamp: new Date(),
         actionButtons: [
-          { label: "💰 પાત્રતા કેલ્ક્યુલેટર", href: "/benefit-calculator", variant: "primary" },
-          { label: "📍 કચેરી લોકેટર", href: "/locator", variant: "secondary" },
+          {
+            label: currentLang === "mr" ? "💰 माझी पात्रता मोजा" : currentLang === "hi" ? "💰 मेरी पात्रता जांचें" : currentLang === "en" ? "💰 Check My Eligibility" : "💰 પાત્રતા કેલ્ક્યુલેટર",
+            href: "/benefit-calculator",
+            variant: "primary",
+          },
+          {
+            label: currentLang === "mr" ? "📍 जवळचे कार्यालय शोधा" : currentLang === "hi" ? "📍 नज़दीकी कार्यालय खोजें" : currentLang === "en" ? "📍 Find Nearest Office" : "📍 કચેરી લોકેટર",
+            href: "/locator",
+            variant: "secondary",
+          },
         ],
       };
       const updatedWithErr = [...nextMessages, errorMsg];
@@ -861,7 +834,7 @@ export default function ChatBot() {
     requestLiveLocation();
   };
 
-  const activePills = CATEGORY_PROMPTS[currentLang] || CATEGORY_PROMPTS.gu;
+  const activePills = getLocalizedCategoryPrompts(currentLang);
 
   return (
     <div
@@ -880,10 +853,10 @@ export default function ChatBot() {
         <div className="absolute inset-0 z-50 bg-orange-600/90 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-white text-center animate-in fade-in duration-200 border-4 border-dashed border-white m-3 rounded-3xl">
           <UploadCloud size={64} className="animate-bounce mb-3 text-amber-200" />
           <h3 className="text-xl sm:text-2xl font-black mb-1">
-            📥 સરકારી દસ્તાવેજ અહીં ડ્રોપ કરો
+            {t.chat.dropTitle}
           </h3>
           <p className="text-xs sm:text-sm text-orange-100 max-w-md">
-            આધાર કાર્ડ, રેશનકાર્ડ, ૭/૧૨, આવકનો દાખલો કે કોઈપણ સરકારી ફોટો ડ્રોપ કરો. AI આપમેળે ખરાઈ કરી માન્ય યોજનાઓ બતાવશે!
+            {t.chat.dropDesc}
           </p>
         </div>
       )}
@@ -894,7 +867,7 @@ export default function ChatBot() {
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <HistoryIcon size={18} className="text-orange-400" />
-              <h3 className="font-black text-sm">ચેટ ઇતિહાસ (History)</h3>
+              <h3 className="font-black text-sm">{t.chat.historyTitle}</h3>
             </div>
             <button
               type="button"
@@ -910,9 +883,9 @@ export default function ChatBot() {
               <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl mb-3 text-orange-400">
                 <Lock size={24} />
               </div>
-              <h4 className="font-bold text-sm text-white mb-1.5">🔐 લૉગિન જરૂરી છે</h4>
+              <h4 className="font-bold text-sm text-white mb-1.5">{t.chat.loginRequired}</h4>
               <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                તમારી ખાનગી ચેટ હિસ્ટ્રી અને અરજીઓ સુરક્ષિત રાખવા માટે કૃપા કરીને લૉગિન કરો.
+                {t.chat.loginDesc}
               </p>
               <button
                 type="button"
@@ -923,7 +896,7 @@ export default function ChatBot() {
                 className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs shadow-md transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <LogIn size={14} />
-                <span>સત્તાવાર નાગરિક લૉગિન</span>
+                <span>{t.chat.loginBtn}</span>
               </button>
             </div>
           ) : (
@@ -946,11 +919,11 @@ export default function ChatBot() {
                 <button
                   type="button"
                   onClick={handleCitizenLogout}
-                  title="ચેટ અને એકાઉન્ટમાંથી લૉગઆઉટ કરો"
+                  title="Logout"
                   className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-white border border-rose-500/30 text-[10.5px] font-bold transition cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
                 >
                   <LogOut size={12} />
-                  <span>લૉગઆઉટ</span>
+                  <span>{t.chat.logout}</span>
                 </button>
               </div>
 
@@ -962,7 +935,7 @@ export default function ChatBot() {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer"
                 >
                   <Plus size={16} />
-                  <span>➕ નવી ચેટ શરૂ કરો (New Chat)</span>
+                  <span>{t.chat.startNewChat}</span>
                 </button>
               </div>
 
@@ -970,8 +943,8 @@ export default function ChatBot() {
               <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
                 {chatSessions.length === 0 ? (
                   <div className="text-center py-10 px-4 text-xs text-slate-400">
-                    <p>હજી કોઈ અગાઉની ચેટ નથી.</p>
-                    <p className="text-[11px] text-slate-500 mt-1">તમે જે પણ ચેટ કરશો તે અહીં આપમેળે સેવ થશે.</p>
+                    <p>{t.chat.noHistory}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{t.chat.noHistorySub}</p>
                   </div>
                 ) : (
                   chatSessions.map((s) => (
@@ -994,7 +967,7 @@ export default function ChatBot() {
                       <button
                         type="button"
                         onClick={(e) => handleDeleteSession(s.id, e)}
-                        title="આ ચેટ ડિલીટ કરો"
+                        title="Delete this chat"
                         className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-slate-500 transition cursor-pointer"
                       >
                         <Trash2 size={13} />
@@ -1012,7 +985,7 @@ export default function ChatBot() {
                     onClick={handleClearAllHistory}
                     className="w-full text-center text-[10.5px] text-rose-400 hover:text-rose-300 font-bold py-1 transition cursor-pointer"
                   >
-                    બધી હિસ્ટ્રી સાફ કરો (Clear All)
+                    {t.chat.clearAllHistory}
                   </button>
                 </div>
               )}
@@ -1037,7 +1010,7 @@ export default function ChatBot() {
               type="button"
               onClick={() => setIsLoginModalOpen(false)}
               className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-              title="બંધ કરો"
+              title={t.chat.close}
             >
               <X size={16} />
             </button>
@@ -1046,10 +1019,10 @@ export default function ChatBot() {
               🔐
             </div>
             <h3 className="text-base font-black text-slate-900 mb-1">
-              સત્તાવાર નાગરિક 2FA લૉગિન
+              {t.chat.modalLoginTitle}
             </h3>
             <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              લૉગિન કરવાથી તમારી ચેટ હિસ્ટ્રી, કુટુંબ પ્રોફાઈલ અને સરકારી અરજીઓ તમારા આધાર / મોબાઈલ સાથે સુરક્ષિત લિંક થશે.
+              {t.chat.modalLoginDesc}
             </p>
 
             <button
@@ -1058,7 +1031,7 @@ export default function ChatBot() {
               className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-black text-xs shadow-md transition active:scale-95 mb-2.5 cursor-pointer flex items-center justify-center gap-1.5"
             >
               <UserCheck size={14} />
-              <span>⚡ ૧-ક્લિક લૉગિન: હરી વિનોદરાઈ પટેલ</span>
+              <span>{t.chat.oneClickLogin}</span>
             </button>
 
             <Link
@@ -1066,7 +1039,7 @@ export default function ChatBot() {
               onClick={() => setIsLoginModalOpen(false)}
               className="block w-full py-2.5 px-4 rounded-2xl bg-slate-100 hover:bg-orange-50 text-slate-800 hover:text-orange-700 border border-slate-200 text-xs font-extrabold transition"
             >
-              📲 આધાર & OTP વડે લૉગિન પોર્ટલ ખોલો &rarr;
+              {t.chat.otpLogin}
             </Link>
 
             <button
@@ -1074,7 +1047,7 @@ export default function ChatBot() {
               onClick={() => setIsLoginModalOpen(false)}
               className="mt-3 text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
             >
-              બંધ કરો
+              {t.chat.close}
             </button>
           </div>
         </div>
@@ -1103,7 +1076,7 @@ export default function ChatBot() {
                 NagrikSeva AI <Sparkles size={14} className="text-yellow-300 shrink-0" />
               </h2>
               <p className="text-[11px] text-orange-100 truncate flex items-center gap-1">
-                <span>સત્તાવાર ઈ-ગવર્નન્સ સહાયક &bull; {currentLang.toUpperCase()} Mode</span>
+                <span>{t.chat.subTitle} &bull; {t.chat.modeLabel.replace("{lang}", currentLang.toUpperCase())}</span>
               </p>
             </div>
           </div>
@@ -1113,27 +1086,31 @@ export default function ChatBot() {
             <button
               type="button"
               onClick={handleNewChat}
-              title="નવી ચેટ શરૂ કરો"
+              title={t.chat.startNewChat}
               className="px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-xs border border-white/25 transition flex items-center gap-1 active:scale-95 cursor-pointer"
             >
               <Plus size={14} />
-              <span>નવી ચેટ</span>
+              <span>{t.chat.newChat}</span>
             </button>
 
             {citizenSession ? (
               <div className="flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 text-[11px] bg-white/20 text-white font-bold px-2.5 py-1 rounded-xl border border-white/30 backdrop-blur-xs max-w-[150px] truncate">
                   <UserCheck size={12} className="text-amber-300 shrink-0" />
-                  <span className="truncate">{citizenSession.citizenNameGu || citizenSession.citizenName}</span>
+                  <span className="truncate">
+                    {currentLang === "gu"
+                      ? (citizenSession.citizenNameGu || citizenSession.citizenName)
+                      : (citizenSession.citizenName || citizenSession.citizenNameGu)}
+                  </span>
                 </span>
                 <button
                   type="button"
                   onClick={handleCitizenLogout}
-                  title="ચેટ અને એકાઉન્ટમાંથી લૉગઆઉટ કરો"
+                  title="Logout"
                   className="inline-flex items-center gap-1 text-[11px] bg-rose-600/80 hover:bg-rose-600 text-white font-bold px-2.5 py-1 rounded-xl border border-rose-300/30 transition active:scale-95 cursor-pointer shadow-xs"
                 >
                   <LogOut size={12} />
-                  <span>લૉગઆઉટ</span>
+                  <span>{t.chat.logout}</span>
                 </button>
               </div>
             ) : (
@@ -1143,7 +1120,7 @@ export default function ChatBot() {
                 className="inline-flex items-center gap-1 text-xs bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-2.5 py-1.5 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
               >
                 <LogIn size={13} />
-                <span>લૉગિન</span>
+                <span>{t.chat.login}</span>
               </button>
             )}
 
@@ -1151,19 +1128,21 @@ export default function ChatBot() {
             <div
               title={
                 liveLocation?.nearestOfficeGu
-                  ? `નજીકની કચેરી: ${liveLocation.nearestOfficeGu}`
-                  : "લાઈવ લોકેશન ટ્રેકિંગ સક્રિય"
+                  ? `Nearest Office: ${liveLocation.nearestOfficeGu}`
+                  : "Live GPS tracking active"
               }
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/25 text-[11px] font-bold border border-white/20 backdrop-blur-xs text-white shadow-xs"
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="truncate max-w-[130px]">
-                📍 {liveLocation ? `${liveLocation.villageGu}, ${liveLocation.talukaGu}` : citizenSession?.village ? `${citizenSession.village}, ${citizenSession.taluka || "ગોંડલ"}` : "ગોમટા, ગોંડલ"}
+                📍 {currentLang === "gu"
+                  ? (liveLocation ? `${liveLocation.villageGu}, ${liveLocation.talukaGu}` : citizenSession?.village ? `${citizenSession.village}, ${citizenSession.taluka || "ગોંડલ"}` : "ગોમટા, ગોંડલ")
+                  : (liveLocation ? `${liveLocation.village}, ${liveLocation.taluka}` : citizenSession?.village ? `${citizenSession.village}, ${citizenSession.taluka || "Gondal"}` : "Gomta, Gondal")}
               </span>
               <button
                 type="button"
                 onClick={requestLiveLocation}
-                title="લાઈવ લોકેશન રિફ્રેશ કરો"
+                title="Refresh location"
                 className="hover:text-amber-300 text-xs transition cursor-pointer shrink-0 ml-0.5"
               >
                 {locationLoading ? "..." : "🔄"}
@@ -1172,7 +1151,7 @@ export default function ChatBot() {
 
             <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/20 text-[11px] font-bold border border-white/10">
               <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-              <span>Online</span>
+              <span>{t.chat.online}</span>
             </div>
           </div>
         </div>
@@ -1186,7 +1165,7 @@ export default function ChatBot() {
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen((prev) => !prev)}
-                title="ચેટ ઇતિહાસ જુઓ"
+                title={t.chat.historyTitle}
                 className="p-1.5 rounded-xl bg-white/20 hover:bg-white/30 border border-white/25 transition cursor-pointer text-white shrink-0 active:scale-95"
               >
                 <HistoryIcon size={15} />
@@ -1202,7 +1181,7 @@ export default function ChatBot() {
                   NagrikSeva AI <Sparkles size={11} className="text-yellow-300 shrink-0" />
                 </h2>
                 <p className="text-[9.5px] text-orange-100 truncate">
-                  સત્તાવાર ઈ-ગવર્નન્સ • {currentLang.toUpperCase()}
+                  {t.chat.subTitle} • {currentLang.toUpperCase()}
                 </p>
               </div>
             </div>
@@ -1212,11 +1191,11 @@ export default function ChatBot() {
               <button
                 type="button"
                 onClick={handleNewChat}
-                title="નવી ચેટ"
+                title={t.chat.startNewChat}
                 className="p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-[10px] border border-white/25 transition flex items-center gap-0.5 active:scale-95 cursor-pointer"
               >
                 <Plus size={13} />
-                <span className="text-[10px]">નવી</span>
+                <span className="text-[10px]">{t.chat.newChat}</span>
               </button>
 
               {citizenSession ? (
@@ -1228,7 +1207,7 @@ export default function ChatBot() {
                   <button
                     type="button"
                     onClick={handleCitizenLogout}
-                    title="લૉગઆઉટ"
+                    title="Logout"
                     className="p-1.5 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-300/30 transition active:scale-95 cursor-pointer flex items-center"
                   >
                     <LogOut size={12} />
@@ -1241,7 +1220,7 @@ export default function ChatBot() {
                   className="inline-flex items-center gap-1 text-[10px] bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-2 py-1 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
                 >
                   <LogIn size={11} />
-                  <span>લૉગિન</span>
+                  <span>{t.chat.login}</span>
                 </button>
               )}
             </div>
@@ -1257,7 +1236,7 @@ export default function ChatBot() {
               <button
                 type="button"
                 onClick={requestLiveLocation}
-                title="લાઈવ લોકેશન રિફ્રેશ કરો"
+                title="Refresh location"
                 className="hover:text-amber-300 text-[10px] transition cursor-pointer shrink-0 ml-0.5"
               >
                 {locationLoading ? "..." : "🔄"}
@@ -1265,7 +1244,7 @@ export default function ChatBot() {
             </div>
 
             <span className="text-[9.5px] text-orange-100 font-medium truncate shrink-0 bg-white/10 px-1.5 py-0.5 rounded">
-              GRTSA ૨૦૧૩ માન્ય
+              {t.chat.officialActCitation}
             </span>
           </div>
         </div>
@@ -1529,18 +1508,18 @@ export default function ChatBot() {
                     <button
                       type="button"
                       onClick={() => speakMessage(msg.text, i)}
-                      title={isSpeaking === i ? "અવાજ બંધ કરો" : "સાંભળો"}
+                      title={isSpeaking === i ? t.chat.stop : t.chat.listen}
                       className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] text-orange-700 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2 py-0.5 rounded-lg font-bold transition cursor-pointer touch-manipulation"
                     >
                       {isSpeaking === i ? (
                         <>
                           <VolumeX size={12} className="text-rose-600 animate-spin" />
-                          <span>બંધ કરો</span>
+                          <span>{t.chat.stop}</span>
                         </>
                       ) : (
                         <>
                           <Volume2 size={12} />
-                          <span>સાંભળો 🔊</span>
+                          <span>{t.chat.listen}</span>
                         </>
                       )}
                     </button>
@@ -1574,7 +1553,7 @@ export default function ChatBot() {
             <div className="min-w-0 text-xs">
               <span className="font-bold text-slate-800 block truncate text-[11px] sm:text-xs">{attachment.name}</span>
               <span className="text-[9.5px] sm:text-[10px] text-slate-500">
-                {(attachment.size / 1024).toFixed(1)} KB • સરકારી માર્ગદર્શિકા મુજબ ચકાસવા તૈયાર
+                {(attachment.size / 1024).toFixed(1)} KB • {t.chat.docReadyForAudit}
               </span>
             </div>
           </div>
@@ -1583,7 +1562,7 @@ export default function ChatBot() {
             type="button"
             onClick={() => setAttachment(null)}
             className="p-1 rounded-full hover:bg-amber-200 text-slate-600 transition cursor-pointer shrink-0"
-            title="દસ્તાવેજ દૂર કરો"
+            title={t.chat.close}
           >
             <X size={14} />
           </button>
@@ -1610,7 +1589,7 @@ export default function ChatBot() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            title="સરકારી દસ્તાવેજ અથવા ફોટો અપલોડ કરો (Upload Document)"
+            title="Upload Document"
             className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-slate-100 hover:bg-orange-50 text-slate-700 hover:text-orange-600 border border-slate-200 transition flex-shrink-0 cursor-pointer shadow-xs active:scale-95 touch-manipulation"
           >
             <Paperclip size={17} />
@@ -1620,7 +1599,7 @@ export default function ChatBot() {
           <button
             type="button"
             onClick={toggleListening}
-            title={isListening ? "સાંભળી રહ્યું છે... બંધ કરવા ક્લિક કરો" : `બોલીને પૂછો (${currentLang.toUpperCase()} Voice)`}
+            title={isListening ? "Listening... click to stop" : `Voice (${currentLang.toUpperCase()})`}
             className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition flex-shrink-0 cursor-pointer shadow-xs touch-manipulation ${
               isListening
                 ? "bg-rose-600 text-white animate-pulse ring-4 ring-rose-200"
@@ -1638,10 +1617,10 @@ export default function ChatBot() {
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
             placeholder={
               attachment
-                ? "આ દસ્તાવેજ વિશે સવાલ લખો..."
+                ? t.chat.inputWithAttachment
                 : isListening
-                ? `સ્પષ્ટ બોલો (${currentLang.toUpperCase()})...`
-                : "સવાલ પૂછો અથવા દસ્તાવેજ ડ્રોપ કરો..."
+                ? t.chat.listeningPlaceholder.replace("{lang}", currentLang.toUpperCase())
+                : t.chat.inputPlaceholder
             }
             className="flex-1 min-w-0 border border-slate-300 rounded-xl sm:rounded-2xl px-2.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder:text-slate-400 bg-slate-50 focus:bg-white transition"
             disabled={loading}
@@ -1654,14 +1633,14 @@ export default function ChatBot() {
             className="flex-shrink-0 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black transition active:scale-95 flex items-center gap-1 shadow-sm cursor-pointer touch-manipulation"
           >
             <Send size={14} />
-            <span className="hidden sm:inline">મોકલો</span>
+            <span className="hidden sm:inline">{t.chat.send}</span>
           </button>
         </div>
 
         {isListening && (
           <p className="text-[10px] sm:text-[11px] text-rose-600 mt-1 text-center font-bold animate-pulse flex items-center justify-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-            તમારો અવાજ રેકોર્ડ થઈ રહ્યો છે... {currentLang.toUpperCase()} માં બોલો...
+            {t.chat.recordingVoice.replace("{lang}", currentLang.toUpperCase())}
           </p>
         )}
       </div>

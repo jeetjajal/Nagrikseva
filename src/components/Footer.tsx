@@ -34,38 +34,48 @@ export default function Footer() {
 
   const isEn = currentLang === "en";
   const isHi = currentLang === "hi";
+  const isMr = currentLang === "mr";
+  const isMl = currentLang === "ml";
 
   const t = {
     dpiSub: isEn
       ? "Digital Public Infrastructure"
       : isHi
       ? "डिजिटल पब्लिक इंफ्रास्ट्रक्चर"
+      : isMr
+      ? "डिजिटल सार्वजनिक पायाभूत सुविधा"
+      : isMl
+      ? "ഡിജിറ്റൽ പബ്ലിക് ഇൻഫ്രാസ്ട്രക്ചർ"
       : "Digital Public Infrastructure",
     description: isEn
       ? "Government of Gujarat e-Governance and Digital Public Infrastructure (DPI) compliant centralized portal providing scheme eligibility, document verification, and 2FA security to citizens."
       : isHi
       ? "गुजरात सरकार e-Governance और डिजिटल पब्लिक इंफ्रास्ट्रक्चर (DPI) मानकों के अनुरूप नागरिकों को योजना पात्रता, दस्तावेज़ सत्यापन और 2FA सुरक्षा प्रदान करने वाला केंद्रीय पोर्टल।"
+      : isMr
+      ? "नागरिकांना योजनांची पात्रता, कागदपत्र पडताळणी आणि 2FA सुरक्षा प्रदान करणारे अधिकृत डिजिटल पोर्टल."
+      : isMl
+      ? "പദ്ധതി അർഹത, രേഖാപരിശോധന, 2FA സുരക്ഷ എന്നിവ പൗരന്മാർക്ക് നൽകുന്ന കേന്ദ്രീകൃത ഡിജിറ്റൽ പോർട്ടൽ."
       : "ગુજરાત સરકાર e-Governance અને Digital Public Infrastructure (DPI) માપદંડો મુજબ નાગરિકોને યોજનાઓ, પાત્રતા, દસ્તાવેજ પ્રમાણીકરણ અને 2FA આધાર સુરક્ષા પૂરી પાડતું કેન્દ્રીય પોર્ટલ.",
-    gigw: isEn ? "GIGW & DPI Certified" : isHi ? "GIGW और DPI प्रमाणित" : "GIGW & DPI પ્રમાણિત",
-    secure2fa: isEn ? "2FA Secure" : isHi ? "2FA सुरक्षित" : "2FA સુરક્ષિત",
-    col2Title: isEn ? "Key Citizen Services" : isHi ? "मुख्य नागरिक सेवाएं" : "મુખ્ય નાગરિક સેવાઓ",
-    eligibility: isEn ? "Eligibility Calculator" : isHi ? "पात्रता कैलकुलेटर" : "પાત્રતા કેલ્ક્યુલેટર (Eligibility)",
-    benefits: isEn ? "Family Benefit Calculator & Pass" : isHi ? "पारिवारिक लाभ कैलकुलेटर और पास" : "કૌટુંબિક લાભ & WhatsApp પાસ",
-    schemes: isEn ? "26+ Government Schemes Database" : isHi ? "२६+ सरकारी योजना डेटाबेस" : "૨૬+ સરકારી યોજનાઓ ડેટાબેઝ",
-    vault: isEn ? "Digital Vault & Certificates" : isHi ? "डिजिटल वॉल्ट और प्रमाणपत्र" : "ડિજિટલ વોલ્ટ & પ્રમાણપત્રો",
-    tracking: isEn ? "Online Application Tracking" : isHi ? "ऑनलाइन आवेदन ट्रैकिंग" : "ઓનલાઇન અરજી ટ્રેકિંગ",
-    col3Title: isEn ? "Citizen Help & Service Centres" : isHi ? "जन सेवा एवं सहायता केंद्र" : "જન સેવા & સહાય કેન્દ્ર",
-    offices: isEn ? "Nearest Mamlatdar / Taluka Office" : isHi ? "निकटतम मामलतदार / तहसील कार्यालय" : "નજીકની મામલતદાર / તાલુકા કચેરી",
-    aiChat: isEn ? "24/7 Gemini AI Assistant" : isHi ? "24/7 Gemini AI सहायक" : "24/7 Gemini AI ગુજરાતી ચેટ",
-    citizenLogin: isEn ? "Citizen Vault & 2FA Login" : isHi ? "नागरिक वॉल्ट एवं 2FA लॉगिन" : "નાગરિક વોલ્ટ & 2FA લૉગિન",
-    officerDesk: isEn ? "Office Admin Scrutiny Desk" : isHi ? "कार्यालय व्यवस्थापक डेस्क" : "કચેરી એડમિન સ્ક્રુટિની ડેસ્ક",
-    helpline: isEn ? "Helpline: 14567 (Toll-Free 24/7)" : isHi ? "हेल्पलाइन: 14567 (टोल-फ्री 24/7)" : "હેલ્પલાઇન: 14567 (ટોલ-ફ્રી 24/7)",
-    col4Title: isEn ? "System Version & Telemetry" : isHi ? "सिस्टम संस्करण और टेलीमेट्री" : "સિસ્ટમ વર્ઝન & ટેલિમેટ્રી",
-    versionLabel: isEn ? "Official Version:" : isHi ? "आधिकारिक संस्करण:" : "સત્તાવાર વર્ઝન:",
-    dataCenter: isEn ? "Data Centre:" : isHi ? "डेटा सेंटर:" : "ડેટાસેન્ટર:",
-    uptime: isEn ? "Uptime:" : isHi ? "अपटाइम:" : "અપટાઇમ:",
-    uptimeVal: isEn ? "99.98% Active" : isHi ? "९९.९८% सक्रिय" : "૯૯.૯૮% સક્રિય",
-    checkUpdate: isEn ? "Check Official Updates" : isHi ? "आधिकारिक अपडेट जांचें" : "સત્તાવાર અપડેટ તપાસો (Check)",
+    gigw: isEn ? "GIGW & DPI Certified" : isHi ? "GIGW और DPI प्रमाणित" : isMr ? "GIGW आणि DPI प्रमाणित" : isMl ? "GIGW & DPI അംഗീകൃതം" : "GIGW & DPI પ્રમાણિત",
+    secure2fa: isEn ? "2FA Secure" : isHi ? "2FA सुरक्षित" : isMr ? "2FA सुरक्षित" : isMl ? "2FA സുരക്ഷിതം" : "2FA સુરક્ષિત",
+    col2Title: isEn ? "Key Citizen Services" : isHi ? "मुख्य नागरिक सेवाएं" : isMr ? "प्रमुख नागरिक सेवा" : isMl ? "പ്രധാന പൗര സേവനങ്ങൾ" : "મુખ્ય નાગરિક સેવાઓ",
+    eligibility: isEn ? "Eligibility Calculator" : isHi ? "पात्रता कैलकुलेटर" : isMr ? "पात्रता कॅल्क्युलेटर" : isMl ? "അർഹതാ കാൽക്കുലേറ്റർ" : "પાત્રતા કેલ્ક્યુલેટર (Eligibility)",
+    benefits: isEn ? "Family Benefit Calculator & Pass" : isHi ? "पारिवारिक लाभ कैलकुलेटर और पास" : isMr ? "कुटुंब लाभ कॅल्क्युलेटर & पास" : isMl ? "കുടുംബ ആനുകൂല്യ കാൽക്കുലേറ്റർ" : "કૌટુંબિક લાભ & WhatsApp પાસ",
+    schemes: isEn ? "26+ Government Schemes Database" : isHi ? "२६+ सरकारी योजना डेटाबेस" : isMr ? "२६+ सरकारी योजना डेटाबेस" : isMl ? "26+ സർക്കാർ പദ്ധതികൾ" : "૨૬+ સરકારી યોજનાઓ ડેટાબેઝ",
+    vault: isEn ? "Digital Vault & Certificates" : isHi ? "डिजिटल वॉल्ट और प्रमाणपत्र" : isMr ? "डिजिटल व्हॉल्ट & प्रमाणपत्रे" : isMl ? "ഡിജിറ്റൽ വോൾട്ട് & സർട്ടിഫിക്കറ്റുകൾ" : "ડિજિટલ વોલ્ટ & પ્રમાણપત્રો",
+    tracking: isEn ? "Online Application Tracking" : isHi ? "ऑनलाइन आवेदन ट्रैकिंग" : isMr ? "ऑनलाइन अर्ज ट्रॅकिंग" : isMl ? "ഓൺലൈൻ അപേക്ഷാ ട്രാക്കിംഗ്" : "ઓનલાઇન અરજી ટ્રેકિંગ",
+    col3Title: isEn ? "Citizen Help & Service Centres" : isHi ? "जन सेवा एवं सहायता केंद्र" : isMr ? "जनसेवा & मदत केंद्र" : isMl ? "സഹായ കേന്ദ്രങ്ങൾ" : "જન સેવા & સહાય કેન્દ્ર",
+    offices: isEn ? "Nearest Mamlatdar / Taluka Office" : isHi ? "निकटतम मामलतदार / तहसील कार्यालय" : isMr ? "जवळचे तहसील / प्रशासकीय कार्यालय" : isMl ? "താലൂക്ക് / ഭരണ കാര്യാലയം" : "નજીકની મામલતદાર / તાલુકા કચેરી",
+    aiChat: isEn ? "24/7 Gemini AI Assistant" : isHi ? "24/7 Gemini AI सहायक" : isMr ? "24/7 Gemini AI सहाय्यक" : isMl ? "24/7 Gemini AI അസിസ്റ്റന്റ്" : "24/7 Gemini AI ગુજરાતી ચેટ",
+    citizenLogin: isEn ? "Citizen Vault & 2FA Login" : isHi ? "नागरिक वॉल्ट एवं 2FA लॉगिन" : isMr ? "नागरिक व्हॉल्ट & 2FA लॉगिन" : isMl ? "പൗര ലോഗിൻ & 2FA" : "નાગરિક વોલ્ટ & 2FA લૉગિન",
+    officerDesk: isEn ? "Office Admin Scrutiny Desk" : isHi ? "कार्यालय व्यवस्थापक डेस्क" : isMr ? "कार्यालय प्रशासन छाननी डेस्क" : isMl ? "ഓഫീസ് അഡ്മിൻ ഡെസ്ക്" : "કચેરી એડમિન સ્ક્રુટિની ડેસ્ક",
+    helpline: isEn ? "Helpline: 14567 (Toll-Free 24/7)" : isHi ? "हेल्पलाइन: 14567 (टोल-फ्री 24/7)" : isMr ? "हेल्पलाइन: 14567 (टोल-फ्री 24/7)" : isMl ? "ഹെൽപ്പ്‌ലൈൻ: 14567 (24/7)" : "હેલ્પલાઇન: 14567 (ટોલ-ફ્રી 24/7)",
+    col4Title: isEn ? "System Version & Telemetry" : isHi ? "सिस्टम संस्करण और टेलीमेट्री" : isMr ? "प्रणाली आवृत्ती आणि टेलिमेट्री" : isMl ? "സിസ്റ്റം വേർഷൻ" : "સિસ્ટમ વર્ઝન & ટેલિમેટ્રી",
+    versionLabel: isEn ? "Official Version:" : isHi ? "आधिकारिक संस्करण:" : isMr ? "अधिकृत आवृत्ती:" : isMl ? "പതിപ്പ്:" : "સત્તાવાર વર્ઝન:",
+    dataCenter: isEn ? "Data Centre:" : isHi ? "डेटा सेंटर:" : isMr ? "डेटा केंद्र:" : isMl ? "ഡാറ്റാ സെന്റർ:" : "ડેટાસેન્ટર:",
+    uptime: isEn ? "Uptime:" : isHi ? "अपटाइम:" : isMr ? "अपटाइम:" : isMl ? "അപ്‌ടൈം:" : "અપટાઇમ:",
+    uptimeVal: isEn ? "99.98% Active" : isHi ? "९९.९८% सक्रिय" : isMr ? "९९.९८% कार्यरत" : isMl ? "99.98% സജീവം" : "૯૯.૯૮% સક્રિય",
+    checkUpdate: isEn ? "Check Official Updates" : isHi ? "आधिकारिक अपडेट जांचें" : isMr ? "नवीन अपडेट तपासा" : isMl ? "അപ്‌ഡേറ്റുകൾ പരിശോധിക്കുക" : "સત્તાવાર અપડેટ તપાસો (Check)",
     architectsTitle: isEn ? "SYSTEM ARCHITECTURE & LEAD ENGINEERING:" : isHi ? "सिस्टम आर्किटेक्चर एवं मुख्य इंजीनियरिंग:" : "સિસ્ટમ આર્કિટેક્ચર અને લીડ એન્જિનિયરિંગ:",
     hariRole: isEn ? "Chief System Architect" : isHi ? "मुख्य सिस्टम आर्किटेक्ट" : "Chief System Architect",
     jeetRole: isEn ? "Lead Full-Stack Engineer" : isHi ? "मुख्य फुल-स्टैक इंजीनियर" : "Lead Full-Stack Engineer",
@@ -79,11 +89,19 @@ export default function Footer() {
       ? `© 2026 NagrikSeva AI. All rights reserved. Government of Gujarat e-Governance Standards.`
       : isHi
       ? `© २०२६ नागरिकसेवा AI (NagrikSeva AI). सर्वाधिकार सुरक्षित। गुजरात सरकार e-Governance मानक।`
+      : isMr
+      ? `© २०२६ नागरिकसेवा AI (NagrikSeva AI). सर्व हक्क राखीव.`
+      : isMl
+      ? `© 2026 NagrikSeva AI. സർവ്വ അവകാശങ്ങളും നിക്ഷിപ്തം.`
       : `© ૨૦૨૬ નાગરિકસેવા AI (NagrikSeva AI). સર્વ અધિકાર સુરક્ષિત. ગુજરાત સરકાર e-Governance માપદંડો.`,
     acts: isEn
       ? "Gujarat Right to Public Services Act (GRTSA 2013) • NFSA 2013 Certified"
       : isHi
       ? "गुजरात लोक सेवा अधिकार अधिनियम (GRTSA २०१३) • NFSA २०१३ प्रमाणित"
+      : isMr
+      ? "लोकसेवा हक्क अधिनियम (GRTSA २०१३) • NFSA २०१३ प्रमाणित"
+      : isMl
+      ? "റൈറ്റ് ടു പബ്ലിക് സർവീസസ് ആക്ട് (GRTSA 2013) • NFSA 2013"
       : "ગુજરાત જાહેર સેવા હક અધિનિયમ (GRTSA ૨૦૧૩) • NFSA ૨૦૧૩ માન્ય",
   };
 

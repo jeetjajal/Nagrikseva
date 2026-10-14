@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PhoneCall, CheckCircle2 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface CitizenInfo {
   citizenNameGu?: string;
@@ -19,6 +20,7 @@ interface OfficerInfo {
 }
 
 export default function MobileGreetingCard() {
+  const { currentLang } = useLanguage();
   const [citizen, setCitizen] = useState<CitizenInfo | null>(null);
   const [officer, setOfficer] = useState<OfficerInfo | null>(null);
 
@@ -78,6 +80,58 @@ export default function MobileGreetingCard() {
     ""
   ).trim();
 
+  const isMr = currentLang === "mr";
+  const isHi = currentLang === "hi";
+  const isEn = currentLang === "en";
+
+  const greetingTitle = loggedInName
+    ? isMr
+      ? `नमस्कार, ${loggedInName}\u00A0🙏`
+      : isHi
+      ? `नमस्ते, ${loggedInName}\u00A0🙏`
+      : isEn
+      ? `Namaste, ${loggedInName}\u00A0🙏`
+      : `નમસ્તે, ${loggedInName}\u00A0🙏`
+    : isMr
+    ? "नमस्कार नागरिक\u00A0🙏"
+    : isHi
+    ? "नमस्ते नागरिक\u00A0🙏"
+    : isEn
+    ? "Welcome Citizen\u00A0🙏"
+    : "નમસ્તે નાગરિક\u00A0🙏";
+
+  const greetingSubtitle = isMr
+    ? "सरकारी योजना, पात्रता तपासणी आणि डिजिटल प्रमाणपत्रे — सर्व एकाच ठिकाणी"
+    : isHi
+    ? "सरकारी योजनाएं, पात्रता जांच और डिजिटल प्रमाणपत्र — सब एक ही स्थान पर"
+    : isEn
+    ? "Government Schemes, Eligibility & Digital Certificates — All in One Portal"
+    : "સરકારી યોજનાઓ, પાત્રતા ચકાસણી અને ડિજિટલ પ્રમાણપત્રો — બધું એક જ જગ્યાએ";
+
+  const helplineText = isMr
+    ? "14567 हेल्पलाइन"
+    : isHi
+    ? "14567 हेल्पलाइन"
+    : isEn
+    ? "14567 Helpline"
+    : "14567 હેલ્પલાઈન";
+
+  const verifiedBadgeText = officer
+    ? isMr
+      ? "अधिकारी"
+      : isHi
+      ? "अधिकारी"
+      : isEn
+      ? "Officer"
+      : "અધિકારી"
+    : isMr
+    ? "2FA प्रमाणित"
+    : isHi
+    ? "2FA प्रमाणित"
+    : isEn
+    ? "2FA Verified"
+    : "2FA પ્રમાણિત";
+
   return (
     <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-emerald-600 rounded-3xl p-3.5 text-white shadow-md relative overflow-hidden">
       {/* Row 1: Top Status Badges + 14567 Helpline Pill */}
@@ -89,7 +143,7 @@ export default function MobileGreetingCard() {
           {(citizen || officer) && (
             <span className="text-[9.5px] font-extrabold bg-emerald-950/45 border border-emerald-300/40 text-emerald-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
               <CheckCircle2 size={10} className="text-emerald-300 shrink-0" />
-              <span>{officer ? "અધિકારી" : "2FA પ્રમાણિત"}</span>
+              <span>{verifiedBadgeText}</span>
             </span>
           )}
         </div>
@@ -99,7 +153,7 @@ export default function MobileGreetingCard() {
           className="app-touch-card flex items-center gap-1 bg-slate-950/35 hover:bg-slate-950/50 border border-white/25 px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0"
         >
           <PhoneCall size={11} className="text-amber-300 shrink-0" />
-          <span>14567 હેલ્પલાઈન</span>
+          <span>{helplineText}</span>
         </a>
       </div>
 
@@ -116,10 +170,10 @@ export default function MobileGreetingCard() {
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-[15px] font-black tracking-tight leading-snug text-white">
-            {loggedInName ? `નમસ્તે, ${loggedInName}\u00A0🙏` : "નમસ્તે નાગરિક\u00A0🙏"}
+            {greetingTitle}
           </h1>
           <p className="text-[11px] text-orange-50/95 leading-snug mt-0.5">
-            સરકારી યોજનાઓ, પાત્રતા ચકાસણી અને ડિજિટલ પ્રમાણપત્રો — બધું એક જ જગ્યાએ
+            {greetingSubtitle}
           </p>
         </div>
       </div>

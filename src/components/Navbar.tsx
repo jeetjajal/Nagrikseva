@@ -208,11 +208,15 @@ export default function Navbar() {
                 <Link
                   href="/portal?mode=citizen"
                   className="ml-1 flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-2 border-emerald-400 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition shadow-xs hover:shadow"
-                  title="તમારું નાગરિક પોર્ટલ અને વોલ્ટ ખોલો"
+                  title="Open Citizen Portal & Vault"
                 >
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <span className="max-w-[160px] truncate">
-                    👤 {citizenSession.citizenNameGu || citizenSession.citizenName || "નાગરિક પોર્ટલ"} (વોલ્ટ)
+                    👤 
+                  {currentLang === "gu"
+                    ? (citizenSession.citizenNameGu || citizenSession.citizenName || "નાગરિક પોર્ટલ")
+                    : (citizenSession.citizenName || citizenSession.citizenNameGu || "Citizen Portal")} ({currentLang === "gu" ? "વોલ્ટ" : currentLang === "en" ? "Vault" : currentLang === "hi" || currentLang === "mr" ? "वॉल्ट" : "Vault"})
+                
                   </span>
                 </Link>
               ) : null}
@@ -458,11 +462,11 @@ export default function Navbar() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[11.5px] font-black truncate leading-tight">
                         {citizenSession
-                          ? citizenSession.citizenNameGu || citizenSession.citizenName || "મારું વોલ્ટ"
-                          : "નાગરિક લૉગિન"}
+                          ? citizenSession.citizenNameGu || citizenSession.citizenName || (currentLang === "en" ? "My Vault" : currentLang === "hi" ? "मेरा वॉल्ट" : currentLang === "mr" ? "माझे व्हॉल्ट" : currentLang === "ml" ? "എന്റെ വോൾട്ട്" : "મારું વોલ્ટ")
+                          : (currentLang === "en" ? "Citizen Login" : currentLang === "hi" ? "नागरिक लॉगिन" : currentLang === "mr" ? "नागरिक लॉगिन" : currentLang === "ml" ? "പൗര ലോഗിൻ" : "નાગરિક લૉગિન")}
                       </p>
                       <p className="text-[9.5px] text-emerald-700 font-bold truncate">
-                        {citizenSession ? "2FA ડિજિટલ વોલ્ટ" : "આધાર OTP & વોલ્ટ"}
+                        {citizenSession ? "2FA Digital Vault" : (currentLang === "en" ? "Aadhaar OTP & Vault" : currentLang === "hi" ? "आधार OTP एवं वॉल्ट" : currentLang === "mr" ? "आधार OTP & व्हॉल्ट" : currentLang === "ml" ? "ആധാർ OTP & വോൾട്ട്" : "આધાર OTP & વોલ્ટ")}
                       </p>
                     </div>
                   </Link>
@@ -480,10 +484,10 @@ export default function Navbar() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[11.5px] font-black text-amber-300 truncate leading-tight">
-                        {officerSession ? officerSession.name || "કચેરી ડેસ્ક" : "અધિકારી લૉગિન"}
+                        {officerSession ? officerSession.name || (currentLang === "en" ? "Officer Desk" : currentLang === "hi" ? "अधिकारी डेस्क" : currentLang === "mr" ? "अधिकारी डेस्क" : currentLang === "ml" ? "ഓഫീസർ ഡെസ്ക്" : "કચેરી ડેસ્ક") : (currentLang === "en" ? "Officer Login" : currentLang === "hi" ? "अधिकारी लॉगिन" : currentLang === "mr" ? "अधिकारी लॉगिन" : currentLang === "ml" ? "ഓഫീസർ ലോഗിൻ" : "અધિકારી લૉગિન")}
                       </p>
                       <p className="text-[9.5px] text-slate-300 font-bold truncate">
-                        તાલુકા / કચેરી ડેસ્ક
+                        {currentLang === "en" ? "Taluka / Office Desk" : currentLang === "hi" ? "तहसील / कार्यालय डेस्क" : currentLang === "mr" ? "तहसील / कार्यालय डेस्क" : currentLang === "ml" ? "താലൂക്ക് / ഓഫീസ് ഡെസ്ക്" : "તાલુકા / કચેરી ડેસ્ક"}
                       </p>
                     </div>
                   </Link>

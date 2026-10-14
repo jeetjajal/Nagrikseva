@@ -11,6 +11,7 @@ import {
   Navigation,
 } from "lucide-react";
 import FamilyMemberManagerBar from "@/components/FamilyMemberManagerBar";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface CitizenPortalHeaderProps {
   citizen: {
@@ -37,32 +38,38 @@ export default function CitizenPortalHeader({
   onOpenLocator,
 }: CitizenPortalHeaderProps) {
   const pathname = usePathname();
+  const { currentLang } = useLanguage();
+
+  const isMr = currentLang === "mr";
+  const isHi = currentLang === "hi";
+  const isEn = currentLang === "en";
+  const isMl = currentLang === "ml";
 
   const tabs = [
     {
       href: "/track",
       id: "track" as const,
-      shortGu: "૧. મારી અરજીઓ",
-      titleGu: "૧. મારી અરજીઓ & ટ્રેકિંગ",
-      subGu: "લાઈવ સ્ટેટસ & પહોંચ",
+      shortGu: isMr ? "१. अर्ज" : isHi ? "१. आवेदन" : isEn ? "1. Track" : isMl ? "1. അപേക്ഷകൾ" : "૧. મારી અરજીઓ",
+      titleGu: isMr ? "१. माझे अर्ज & ट्रॅकिंग" : isHi ? "१. मेरे आवेदन & ट्रैकिंग" : isEn ? "1. My Applications & Track" : isMl ? "1. എന്റെ അപേക്ഷകൾ & ട്രാക്കിംഗ്" : "૧. મારી અરજીઓ & ટ્રેકિંગ",
+      subGu: isMr ? "थेट स्थिती & पावती" : isHi ? "लाइव स्थिति & रसीद" : isEn ? "Live Status & Receipts" : isMl ? "തത്സമയ വിവരങ്ങൾ" : "લાઈવ સ્ટેટસ & પહોંચ",
       icon: FileText,
       active: activeTab ? activeTab === "track" : pathname === "/track",
     },
     {
       href: "/documents",
       id: "documents" as const,
-      shortGu: "૨. નવી સેવા",
-      titleGu: "૨. નવી સેવા / દસ્તાવેજ અરજી",
-      subGu: "આધાર, રેશન, આવક, જાતિ",
+      shortGu: isMr ? "२. नवीन सेवा" : isHi ? "२. नई सेवा" : isEn ? "2. Apply" : isMl ? "2. പുതിയ സേവനം" : "૨. નવી સેવા",
+      titleGu: isMr ? "२. नवीन सेवा / अर्ज" : isHi ? "२. नई सेवा / आवेदन" : isEn ? "2. New Services & Apply" : isMl ? "2. പുതിയ സർട്ടിഫിക്കറ്റ് അപേക്ഷ" : "૨. નવી સેવા / દસ્તાવેજ અરજી",
+      subGu: isMr ? "आधार, रेशन, दाखला" : isHi ? "आधार, राशन, प्रमाण पत्र" : isEn ? "Aadhaar, Ration, Income" : isMl ? "ആധാർ, റേഷൻ, വരുമാനം" : "આધાર, રેશન, આવક, જાતિ",
       icon: Sparkles,
       active: activeTab ? activeTab === "documents" : pathname === "/documents",
     },
     {
       href: "/eligibility",
       id: "eligibility" as const,
-      shortGu: "૩. પાત્રતા & લાભ",
-      titleGu: "૩. પાત્રતા & DBT લાભ લેજર",
-      subGu: "મળેલ સહાય & નવી યોજનાઓ",
+      shortGu: isMr ? "३. पात्रता & लाभ" : isHi ? "३. पात्रता & लाभ" : isEn ? "3. Benefits" : isMl ? "3. അർഹത & ആനുകൂല്യങ്ങൾ" : "૩. પાત્રતા & લાભ",
+      titleGu: isMr ? "३. पात्रता & DBT लाभ लेजर" : isHi ? "३. पात्रता & DBT लाभ लेजर" : isEn ? "3. Eligibility & DBT Ledger" : isMl ? "3. അർഹത & DBT ലെഡ്ജർ" : "૩. પાત્રતા & DBT લાભ લેજર",
+      subGu: isMr ? "प्राप्त लाभ & योजना" : isHi ? "प्राप्त लाभ & योजनाएं" : isEn ? "Disbursed Aid & Schemes" : isMl ? "ലഭിച്ച സഹായം & പദ്ധതികൾ" : "મળેલ સહાય & નવી યોજનાઓ",
       icon: IndianRupee,
       active: activeTab ? activeTab === "eligibility" : pathname === "/eligibility",
     },
@@ -112,20 +119,20 @@ export default function CitizenPortalHeader({
                 type="button"
                 onClick={onOpenLocator}
                 className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-[11px] sm:text-xs font-extrabold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95 whitespace-nowrap"
-                title="AI કચેરી નેવિગેટર અને GPS રસ્તો જુઓ"
+                title="Office Locator"
               >
                 <Navigation size={12} className="shrink-0" />
-                <span className="hidden xs:inline sm:inline">કચેરી</span>
+                <span className="hidden xs:inline sm:inline">{isMr ? "कार्यालय" : isHi ? "कार्यालय" : isEn ? "Office" : isMl ? "ഓഫീസ്" : "કચેરી"}</span>
               </button>
             )}
             <button
               type="button"
               onClick={onLogout}
               className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 hover:border-rose-300 rounded-xl text-[11px] sm:text-xs font-extrabold transition flex items-center justify-center gap-1 shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
-              title="સત્ર સમાપ્ત કરો"
+              title="Logout"
             >
               <LogOut size={12} className="shrink-0" />
-              <span>લૉગઆઉટ</span>
+              <span>{isMr ? "लॉगआउट" : isHi ? "लॉगआउट" : isEn ? "Logout" : isMl ? "ലോഗൗട്ട്" : "લૉગઆઉટ"}</span>
             </button>
           </div>
         </div>

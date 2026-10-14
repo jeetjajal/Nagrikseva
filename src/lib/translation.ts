@@ -105,7 +105,7 @@ export function applyLanguage(targetLang: string) {
     return;
   }
 
-  // Case 2: Switching to another language (e.g. Hindi, English, Marathi)
+  // Case 2: Switching to another language (e.g. Malayalam, Hindi, English, Marathi)
   setGoogleTranslateCookies(targetLang);
 
   const triggerCombo = (combo: HTMLSelectElement) => {
@@ -116,8 +116,12 @@ export function applyLanguage(targetLang: string) {
   const combo = document.querySelector(".goog-te-combo") as HTMLSelectElement | null;
   if (combo) {
     triggerCombo(combo);
+    // Reload cleanly so all text across every widget, child component and drawer re-renders consistently
+    setTimeout(() => {
+      window.location.reload();
+    }, 200);
   } else {
-    // Script might still be loading or mounting: poll every 50ms for up to 2500ms
+    // Script might still be loading or mounting: poll every 50ms for up to 1000ms, then reload
     let attempts = 0;
     const interval = setInterval(() => {
       attempts++;
@@ -125,7 +129,10 @@ export function applyLanguage(targetLang: string) {
       if (lateCombo) {
         clearInterval(interval);
         triggerCombo(lateCombo);
-      } else if (attempts >= 50) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 200);
+      } else if (attempts >= 20) {
         clearInterval(interval);
         // Fallback: reload with googtrans cookie already set in document.cookie
         window.location.reload();

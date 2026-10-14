@@ -44,43 +44,45 @@ export default function MobileBottomNav() {
 
   const isEn = currentLang === "en";
   const isHi = currentLang === "hi";
+  const isMr = currentLang === "mr";
+  const isMl = currentLang === "ml";
 
   const navItems = [
     {
       key: "home",
       href: "/",
-      label: isEn ? "Home" : isHi ? "होम" : "હોમ",
+      label: isEn ? "Home" : isHi ? "होम" : isMr ? "मुख्य" : isMl ? "ഹോം" : "હોમ",
       icon: Home,
     },
     {
       key: "schemes",
       href: "/schemes",
-      label: isEn ? "Schemes" : isHi ? "योजनाएं" : "યોજનાઓ",
+      label: isEn ? "Schemes" : isHi ? "योजनाएं" : isMr ? "योजना" : isMl ? "പദ്ധതികൾ" : "યોજનાઓ",
       icon: LayoutGrid,
     },
     {
       key: "chat",
       href: "/chat",
-      label: isEn ? "AI Chat" : isHi ? "AI सहायक" : "AI સહાયક",
+      label: isEn ? "AI Chat" : isHi ? "AI सहायक" : isMr ? "AI संवाद" : isMl ? "AI ചാറ്റ്" : "AI સહાયક",
       icon: Bot,
       highlight: true,
     },
     {
       key: "locator",
       href: "/locator",
-      label: isEn ? "Offices" : isHi ? "कार्यालय" : "કચેરી",
+      label: isEn ? "Offices" : isHi ? "कार्यालय" : isMr ? "कार्यालय" : isMl ? "ഓഫീസുകൾ" : "કચેરી",
       icon: MapPin,
     },
     {
       key: "login",
       href: "/portal",
       label: citizenSession
-        ? isEn ? "Vault" : isHi ? "वॉल्ट" : "વોલ્ટ"
+        ? isEn ? "Vault" : isHi ? "वॉल्ट" : isMr ? "वॉल्ट" : isMl ? "വോൾട്ട്" : "વોલ્ટ"
         : officerSession
-        ? isEn ? "Desk" : isHi ? "डेस्क" : "ડેસ્ક"
-        : isEn ? "Login" : isHi ? "लॉगिन" : "લૉગિન",
+        ? isEn ? "Desk" : isHi ? "डेस्क" : isMr ? "डेस्क" : isMl ? "ഡെസ്ക്" : "ડેસ્ક"
+        : isEn ? "Login" : isHi ? "लॉगिन" : isMr ? "लॉगिन" : isMl ? "ലോഗിൻ" : "લૉગિન",
       icon: User,
-      badge: citizenSession ? "2FA" : officerSession ? (isEn ? "OFFICER" : isHi ? "अधिकारी" : "કચેરી") : undefined,
+      badge: citizenSession ? "2FA" : officerSession ? (isEn ? "OFFICER" : isHi ? "अधिकारी" : isMr ? "अधिकारी" : isMl ? "ഓഫീസർ" : "કચેરી") : undefined,
     },
   ];
 

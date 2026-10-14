@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -123,6 +124,12 @@ export default function OfficerLoginShield({
     } finally {
       setGateLoading(false);
     }
+  };
+
+  const handleDemoFill = () => {
+    setOfficerId("GUJ-GOV-9012");
+    setOfficerPin("GJ2026");
+    setError("");
   };
 
   const handleLogin = async (e?: React.FormEvent) => {

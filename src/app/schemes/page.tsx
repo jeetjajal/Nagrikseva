@@ -6,6 +6,8 @@ import SchemeCard from "@/components/SchemeCard";
 import { SkeletonCard } from "@/components/Skeleton";
 import Navbar from "@/components/Navbar";
 import { Scheme } from "@/types";
+import { useLanguage } from "@/context/LanguageContext";
+import { getLocalizedCategoryLabel } from "@/lib/schemes-i18n";
 import {
   RefreshCw,
   Sparkles,
@@ -26,6 +28,7 @@ interface DbClusterMeta {
 }
 
 export default function SchemesPage() {
+  const { currentLang } = useLanguage();
   const [schemes, setSchemes] = useState<Scheme[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -156,11 +159,12 @@ export default function SchemesPage() {
                   : "bg-white text-gray-700 border border-gray-200 hover:border-orange-300 hover:bg-orange-50/50"
               }`}
             >
-              🌐 બધી ({clusterMeta.totalInCluster})
+              🌐 {currentLang === "mr" ? "सर्व" : currentLang === "hi" ? "सभी" : currentLang === "en" ? "All" : currentLang === "ml" ? "എല്ലാം" : "બધી"} ({clusterMeta.totalInCluster})
             </button>
             {CATEGORIES.map((cat) => {
               const info = CATEGORY_LABELS[cat];
               const isSelected = selectedCategory === cat;
+              const localizedLabel = getLocalizedCategoryLabel(cat, currentLang);
               return (
                 <button
                   key={cat}
@@ -172,7 +176,7 @@ export default function SchemesPage() {
                   }`}
                 >
                   <span>{info.icon}</span>
-                  <span>{info.labelGu || info.label}</span>
+                  <span>{localizedLabel || info.labelGu || info.label}</span>
                 </button>
               );
             })}
@@ -183,12 +187,12 @@ export default function SchemesPage() {
             <p className="text-xs font-semibold text-gray-700">
               {isLoading ? (
                 <span className="flex items-center gap-1 text-orange-600">
-                  <RefreshCw size={12} className="animate-spin" /> લોડ થઈ રહ્યું છે...
+                  <RefreshCw size={12} className="animate-spin" /> {currentLang === "mr" ? "लोड होत आहे..." : currentLang === "hi" ? "लोड हो रहा है..." : currentLang === "en" ? "Loading..." : currentLang === "ml" ? "ലോഡുചെയ്യുന്നു..." : "લોડ થઈ રહ્યું છે..."}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 size={13} className="text-emerald-500" />
-                  {schemes.length} યોજનાઓ — પૃષ્ઠ {page}/{totalPages || 1}
+                  {schemes.length} {currentLang === "mr" ? "योजना" : currentLang === "hi" ? "योजनाएं" : currentLang === "en" ? "Schemes" : currentLang === "ml" ? "പദ്ധതികൾ" : "યોજનાઓ"} — {currentLang === "mr" ? "पृष्ठ" : currentLang === "hi" ? "पृष्ठ" : currentLang === "en" ? "Page" : currentLang === "ml" ? "പേജ്" : "પૃષ્ઠ"} {page}/{totalPages || 1}
                 </span>
               )}
             </p>

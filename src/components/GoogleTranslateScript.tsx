@@ -251,10 +251,16 @@ export default function GoogleTranslateScript() {
                   combo.value = activeLang;
                   combo.dispatchEvent(new Event("change", { bubbles: true }));
                 }
+                // Verify once more after 300ms in case Google Translate reset it
                 setTimeout(() => {
+                  const currentCombo = document.querySelector(".goog-te-combo") as HTMLSelectElement | null;
+                  if (currentCombo && currentCombo.value !== activeLang) {
+                    currentCombo.value = activeLang;
+                    currentCombo.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
                   window.dispatchEvent(new Event("nagrikseva:pageReady"));
-                }, 400);
-              } else if (attempts >= 40) {
+                }, 300);
+              } else if (attempts >= 60) {
                 clearInterval(checkInterval);
                 window.dispatchEvent(new Event("nagrikseva:pageReady"));
               }

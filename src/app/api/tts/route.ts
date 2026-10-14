@@ -52,10 +52,27 @@ async function generateAudioStream(rawText: string, lang: string) {
     .trim();
 
   if (!clean) {
-    clean = lang === "hi" ? "नमस्ते" : lang === "en" ? "Hello" : "નમસ્તે";
+    clean = lang === "hi" ? "नमस्ते" : lang === "mr" ? "नमस्कार" : lang === "en" ? "Hello" : "નમસ્તે";
   }
 
-  const langCode = lang === "hi" ? "hi" : lang === "en" ? "en-IN" : "gu";
+  const TTS_LANG_MAP: Record<string, string> = {
+    gu: "gu",
+    mr: "mr",
+    hi: "hi",
+    en: "en-IN",
+    bn: "bn",
+    ta: "ta",
+    te: "te",
+    kn: "kn",
+    ml: "ml",
+    pa: "pa",
+    or: "or",
+    ur: "ur",
+    as: "as",
+    sa: "sa",
+    ne: "ne",
+  };
+  const langCode = TTS_LANG_MAP[lang] || lang || "gu";
   const chunks = splitTextIntoSpeechChunks(clean);
 
   if (chunks.length === 0) {
