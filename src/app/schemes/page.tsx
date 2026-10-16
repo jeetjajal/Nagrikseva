@@ -39,7 +39,7 @@ export default function SchemesPage() {
     serverCluster: "GSDC-Gandhinagar-Node-01",
     loadBalancerStatus: "active-round-robin",
     latencyMs: 32,
-    totalInCluster: 26,
+    totalInCluster: 57,
   });
 
   const handleSearchChange = (val: string) => {

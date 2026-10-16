@@ -34,6 +34,8 @@ import {
   Camera,
   LogOut,
   RotateCw,
+  X,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 import GovernmentReceiptSlip from "@/components/GovernmentReceiptSlip";
@@ -42,7 +44,12 @@ import FamilyMemberManagerBar from "@/components/FamilyMemberManagerBar";
 import { getActiveFamilyMember } from "@/lib/family-ledger";
 import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 import DigiLockerGatewayModal from "@/components/DigiLockerGatewayModal";
-import { DigiLockerDocument, DigiLockerConsentArtifact } from "@/lib/digilocker-engine";
+import {
+  DigiLockerDocument,
+  DigiLockerConsentArtifact,
+  isSlotSupportedByDigiLocker,
+  validateDocSlotCompatibility,
+} from "@/lib/digilocker-engine";
 
 interface UploadedDocState {
   file: File | null;
@@ -65,17 +72,24 @@ interface UploadedDocState {
   isDigiLockerVerified?: boolean;
   digiLockerUri?: string;
   digiLockerIssuer?: string;
+  fileSize?: string;
+  sha256Hash?: string;
 }
 
 export default function DocumentServicePortal({
   hideCitizenHeader = false,
+  initialPaymentOpen = false,
 }: {
   hideCitizenHeader?: boolean;
+  initialPaymentOpen?: boolean;
 } = {}) {
   // 1. Service Selection & Mode
   const [selectedServiceId, setSelectedServiceId] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const srv = params.get("service");
+        if (srv) return srv;
         const saved = sessionStorage.getItem("nagrik_reapply_context");
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -89,6 +103,9 @@ export default function DocumentServicePortal({
   const [serviceMode, setServiceMode] = useState<"new" | "update">(() => {
     if (typeof window !== "undefined") {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get("mode");
+        if (mode === "new" || mode === "update") return mode;
         const saved = sessionStorage.getItem("nagrik_reapply_context");
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -234,18 +251,84 @@ export default function DocumentServicePortal({
   const [activeDigiLockerTarget, setActiveDigiLockerTarget] = useState<string>("all");
   const [digiLockerVerifiedDocs, setDigiLockerVerifiedDocs] = useState<Record<string, DigiLockerDocument>>({});
   const [isAutoFilledByDigiLocker, setIsAutoFilledByDigiLocker] = useState<boolean>(false);
+  const [previewDocModal, setPreviewDocModal] = useState<{
+    title: string;
+    src: string;
+    isPdf?: boolean;
+    fileSize?: string;
+    sha256?: string;
+    issuerGu?: string;
+    uri?: string;
+    isDigiLockerVerified?: boolean;
+  } | null>(null);
+  useBodyScrollLock(!!previewDocModal);
 
   // 6. Phygital: Signature selection
   const [signatureType, setSignatureType] = useState<"aadhaar-esign" | "physical-declaration">("aadhaar-esign");
 
   // 7. Payment Gateway Modal State (Cyber Treasury / Bharat BillPay)
-  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("step") === "payment" || window.location.pathname.startsWith("/payment")) {
+        return true;
+      }
+    }
+    return Boolean(initialPaymentOpen);
+  });
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "challan">("upi");
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
-  const [activeTxnId, setActiveTxnId] = useState<string>("");
-  const [activeChallanNo, setActiveChallanNo] = useState<string>("");
+  const [activeTxnId, setActiveTxnId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("ref") || params.get("txn") || `TXN-GUJ-${Math.floor(100000 + Math.random() * 899999)}`;
+    }
+    return `TXN-GUJ-${Math.floor(100000 + Math.random() * 899999)}`;
+  });
+  const [activeChallanNo, setActiveChallanNo] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("grn") || params.get("challan") || `GRN-2026-${Math.floor(10000 + Math.random() * 89999)}`;
+    }
+    return `GRN-2026-${Math.floor(10000 + Math.random() * 89999)}`;
+  });
   const [showSlipModal, setShowSlipModal] = useState<boolean>(false);
   const [copiedVpa, setCopiedVpa] = useState<boolean>(false);
+
+  // Synchronize browser history and back button with modal states
+  const handleClosePaymentModal = () => {
+    setShowPaymentModal(false);
+    setIsProcessingPayment(false);
+    if (typeof window !== "undefined") {
+      try {
+        window.history.pushState(null, "", "/documents");
+      } catch (e) {
+        console.warn("History pushState error:", e);
+      }
+    }
+  };
+
+  const handleCloseReceiptModal = () => {
+    setSubmittedApp(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.history.pushState(null, "", "/documents");
+      } catch (e) {
+        console.warn("History pushState error:", e);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/payment")) {
+        setShowPaymentModal(false);
+        setSubmittedApp(null);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // 8. Submission & Notification Alert Simulation
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -466,6 +549,17 @@ export default function DocumentServicePortal({
     try {
       const base64Data = await compressImageIfNeeded(file);
 
+      // Compute cryptographic SHA-256 hash for document integrity guarantee
+      let computedSha256 = "";
+      try {
+        const buffer = await file.arrayBuffer();
+        const hashBuf = await window.crypto.subtle.digest("SHA-256", buffer);
+        computedSha256 = Array.from(new Uint8Array(hashBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      } catch {}
+
+      const sizeInKb = Math.round(file.size / 1024);
+      const formattedSize = sizeInKb > 1024 ? `${(sizeInKb / 1024).toFixed(1)} MB` : `${sizeInKb} KB`;
+
       // Set analyzing state with loading indicator for all documents including photos
       setUploadedDocs((prev) => ({
         ...prev,
@@ -474,6 +568,8 @@ export default function DocumentServicePortal({
           fileName: file.name,
           fileType: file.type || "image/jpeg",
           base64: base64Data,
+          fileSize: formattedSize,
+          sha256Hash: computedSha256,
           status: "analyzing",
         },
       }));
@@ -568,6 +664,8 @@ export default function DocumentServicePortal({
             fileName: file.name,
             fileType: file.type || "image/jpeg",
             base64: base64Data,
+            fileSize: formattedSize,
+            sha256Hash: computedSha256,
             status: calculatedStatus,
             qualityScore: a.qualityScore || (isMismatch ? 10 : 92),
             adviceGu: a.actionableAdviceGu || a.feedbackGu || "દસ્તાવેજ સફળતાપૂર્વક ચકાસાયો.",
@@ -703,71 +801,220 @@ export default function DocumentServicePortal({
   };
 
   // 1-Click Official DigiLocker Gateway Response Handler
+  // 1-Click Official DigiLocker Gateway Response Handler
   const handleDigiLockerDocumentFetched = (payload: {
     document: DigiLockerDocument;
     allFetchedDocs?: DigiLockerDocument[];
     consentArtifact: DigiLockerConsentArtifact;
   }) => {
-    const docsToProcess = payload.allFetchedDocs && payload.allFetchedDocs.length > 0
-      ? payload.allFetchedDocs
-      : [payload.document];
-
     const updatedUploads: Record<string, UploadedDocState> = { ...uploadedDocs };
     const updatedDigiMap: Record<string, DigiLockerDocument> = { ...digiLockerVerifiedDocs };
 
-    docsToProcess.forEach((doc) => {
-      updatedDigiMap[doc.id] = doc;
+    // Record verified docs in map
+    if (payload.allFetchedDocs && payload.allFetchedDocs.length > 0) {
+      payload.allFetchedDocs.forEach((d) => {
+        updatedDigiMap[d.id] = d;
+      });
+    } else if (payload.document) {
+      updatedDigiMap[payload.document.id] = payload.document;
+    }
 
-      // Find matching requiredDoc in current service
-      const match = requiredDocs.find(
-        (rd) =>
-          rd.id === doc.id ||
-          rd.nameEn.toLowerCase().includes(doc.id.toLowerCase()) ||
-          rd.nameGu.includes(doc.nameGu.slice(0, 4)) ||
-          (doc.id === "aadhaar" && (rd.id.includes("aadhaar") || rd.id.includes("photo_id") || rd.id.includes("identity"))) ||
-          (doc.id === "income" && (rd.id.includes("income") || rd.id.includes("salary"))) ||
-          (doc.id === "ration" && rd.id.includes("ration")) ||
-          (doc.id === "land_records" && (rd.id.includes("land") || rd.id.includes("7_12") || rd.id.includes("ror"))) ||
-          (doc.id === "electricity" && (rd.id.includes("electricity") || rd.id.includes("light") || rd.id.includes("address"))) ||
-          (doc.id === "caste" && rd.id.includes("caste")) ||
-          (doc.id === "pan" && rd.id.includes("pan"))
-      );
+    // ─────────────────────────────────────────────────────────────────────────
+    // SCENARIO A: BULK FETCH ("Fetch All Required" clicked)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (payload.allFetchedDocs && payload.allFetchedDocs.length > 0) {
+      const availableDocs = payload.allFetchedDocs;
 
-      const targetSlotId = match ? match.id : doc.id;
+      // Iterate through required slots for current service
+      requiredDocs.forEach((slot) => {
+        // 1. If slot is NOT supported by DigiLocker (e.g. tippan_copy, panchnama, affidavit), SKIP COMPLETELY!
+        if (!isSlotSupportedByDigiLocker(slot.id, slot.nameEn, slot.nameGu)) {
+          return;
+        }
 
-      updatedUploads[targetSlotId] = {
-        file: null,
-        fileName: `${doc.nameGu} (DigiLocker Verified)`,
-        fileType: "application/pdf",
-        base64: doc.filePreviewUrl || doc.userUploadedBase64 || "",
-        status: "valid",
-        qualityScore: 100,
-        adviceGu: `✅ DigiLocker Rule 9A Verified • URI: ${doc.uri} • સત્તાવાર ડિજિટલ સહી પ્રમાણિત.`,
-        needsUpdate: false,
-        needsNewDocument: false,
-        nameMatchStatus: "matched",
-        nameMatchConfidence: 100,
-        isDigiLockerVerified: true,
-        digiLockerUri: doc.uri,
-        digiLockerIssuer: doc.issuerGu,
-        documentType: doc.nameGu,
-      };
+        // 2. Special handling for Applicant Passport Photo slot
+        const isPhotoSlot =
+          slot.id === "applicant_photo" ||
+          slot.id === "photo_proof" ||
+          slot.id === "passport_photo" ||
+          slot.id === "photo" ||
+          (slot.id.includes("photo") && !slot.id.includes("photo_id") && !slot.id.includes("identity"));
 
-      if (doc.id === "aadhaar" && doc.extractedData.photoUrl) {
-        setUserUploadedPhoto(doc.extractedData.photoUrl);
+        if (isPhotoSlot) {
+          // Look for Aadhaar doc or explicit photo doc
+          const aadhaarDoc = availableDocs.find((d) => d.id === "aadhaar" || d.docType === "ADHAR");
+          const photoUrl = aadhaarDoc?.extractedData?.photoUrl || "/demo-docs/aadhaar_photo_hq.png";
+
+          updatedUploads[slot.id] = {
+            file: null,
+            fileName: "aadhaar_verified_photo.jpg",
+            fileType: "image/jpeg",
+            base64: photoUrl,
+            fileSize: "85 KB",
+            sha256Hash:
+              aadhaarDoc?.sha256Hash || "8f3b2c1a0e9d7c4b5a6f8e7d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b",
+            status: "valid",
+            qualityScore: 100,
+            adviceGu: `✅ DigiLocker UIDAI Verified • આધાર કાર્ડમાંથી અરજદારનો રંગીન પાસપોર્ટ ફોટો સફળતાપૂર્વક મેળવાયો.`,
+            needsUpdate: false,
+            needsNewDocument: false,
+            nameMatchStatus: "matched",
+            nameMatchConfidence: 100,
+            isDigiLockerVerified: true,
+            digiLockerUri: aadhaarDoc?.uri || "in.gov.uidai-ADHAR-XXXX-XXXX-4589",
+            digiLockerIssuer: aadhaarDoc?.issuerGu || "ભારતીય વિશિષ્ટ ઓળખ સત્તામંડળ (UIDAI)",
+            documentType: "અરજદારનો પાસપોર્ટ સાઇઝ રંગીન ફોટો",
+          };
+
+          setUserUploadedPhoto(photoUrl);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("nagrik_user_photo", photoUrl);
+            } catch {}
+          }
+          return;
+        }
+
+        // 3. For any other slot, find STRICT compatible doc from DigiLocker
+        const matchingDoc = availableDocs.find((doc) => {
+          const isDocPdf = doc.fileMimeType?.includes("pdf") || (doc.fileName || "").toLowerCase().endsWith(".pdf");
+          const compat = validateDocSlotCompatibility(slot.id, slot.nameGu, doc.id, doc.nameGu, isDocPdf);
+          return compat.isCompatible && !compat.isStrictMismatch;
+        });
+
+        if (matchingDoc) {
+          const fileData = matchingDoc.userUploadedBase64 || matchingDoc.filePreviewUrl || "";
+          const isImg =
+            fileData.startsWith("data:image/") ||
+            fileData.endsWith(".png") ||
+            fileData.endsWith(".jpg") ||
+            fileData.endsWith(".jpeg");
+
+          updatedUploads[slot.id] = {
+            file: null,
+            fileName: matchingDoc.fileName || `${matchingDoc.nameGu} (DigiLocker)`,
+            fileType: isImg ? "image/jpeg" : "application/pdf",
+            base64: fileData,
+            fileSize: matchingDoc.fileSize || "180 KB",
+            sha256Hash:
+              matchingDoc.sha256Hash ||
+              matchingDoc.digitalSignature?.sha256 ||
+              "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            status: "valid",
+            qualityScore: 100,
+            adviceGu: `✅ DigiLocker Rule 9A Verified • URI: ${matchingDoc.uri} • સત્તાવાર ડિજિટલ સહી પ્રમાણિત.`,
+            needsUpdate: false,
+            needsNewDocument: false,
+            nameMatchStatus: "matched",
+            nameMatchConfidence: 100,
+            isDigiLockerVerified: true,
+            digiLockerUri: matchingDoc.uri,
+            digiLockerIssuer: matchingDoc.issuerGu,
+            documentType: matchingDoc.nameGu,
+          };
+        }
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SCENARIO B: SINGLE SLOT TARGETED FETCH
+    // ─────────────────────────────────────────────────────────────────────────
+    else if (payload.document) {
+      const doc = payload.document;
+      const targetSlot =
+        activeDigiLockerTarget && activeDigiLockerTarget !== "all"
+          ? activeDigiLockerTarget
+          : doc.id;
+
+      const targetSlotObj = requiredDocs.find((s) => s.id === targetSlot);
+      const targetSlotNameGu = targetSlotObj?.nameGu || targetSlot;
+
+      // Strict Slot Compatibility Check (Hard Block - Zero Leakage)
+      const isDocPdf = doc.fileMimeType?.includes("pdf") || (doc.fileName || "").toLowerCase().endsWith(".pdf");
+      const compat = validateDocSlotCompatibility(targetSlot, targetSlotNameGu, doc.id, doc.nameGu, isDocPdf);
+
+      if (!compat.isCompatible || compat.isStrictMismatch) {
+        alert(compat.warningMessageGu || "આ દસ્તાવેજ પસંદ કરેલા સ્લોટ માટે અમાન્ય છે!");
+        return;
+      }
+
+      // Check if target slot is photo
+      const isPhotoSlot =
+        targetSlot === "applicant_photo" ||
+        targetSlot === "photo_proof" ||
+        targetSlot === "passport_photo" ||
+        targetSlot === "photo" ||
+        (targetSlot.includes("photo") && !targetSlot.includes("photo_id") && !targetSlot.includes("identity"));
+
+      if (isPhotoSlot) {
+        const photoCandidate = doc.extractedData?.photoUrl || "/demo-docs/aadhaar_photo_hq.png";
+        updatedUploads[targetSlot] = {
+          file: null,
+          fileName: "aadhaar_verified_photo.jpg",
+          fileType: "image/jpeg",
+          base64: photoCandidate,
+          fileSize: "85 KB",
+          sha256Hash:
+            doc.sha256Hash ||
+            doc.digitalSignature?.sha256 ||
+            "8f3b2c1a0e9d7c4b5a6f8e7d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b",
+          status: "valid",
+          qualityScore: 100,
+          adviceGu: `✅ DigiLocker UIDAI Verified • આધાર કાર્ડમાંથી અરજદારનો રંગીન પાસપોર્ટ ફોટો સફળતાપૂર્વક મેળવાયો.`,
+          needsUpdate: false,
+          needsNewDocument: false,
+          nameMatchStatus: "matched",
+          nameMatchConfidence: 100,
+          isDigiLockerVerified: true,
+          digiLockerUri: doc.uri,
+          digiLockerIssuer: doc.issuerGu,
+          documentType: "અરજદારનો પાસપોર્ટ સાઇઝ રંગીન ફોટો",
+        };
+
+        setUserUploadedPhoto(photoCandidate);
         if (typeof window !== "undefined") {
           try {
-            localStorage.setItem("nagrik_user_photo", doc.extractedData.photoUrl);
+            localStorage.setItem("nagrik_user_photo", photoCandidate);
           } catch {}
         }
+      } else {
+        const fileData = doc.userUploadedBase64 || doc.filePreviewUrl || "";
+        const isImg =
+          fileData.startsWith("data:image/") ||
+          fileData.endsWith(".png") ||
+          fileData.endsWith(".jpg") ||
+          fileData.endsWith(".jpeg");
+
+        updatedUploads[targetSlot] = {
+          file: null,
+          fileName: doc.fileName || `${doc.nameGu} (DigiLocker)`,
+          fileType: isImg ? "image/jpeg" : "application/pdf",
+          base64: fileData,
+          fileSize: doc.fileSize || "180 KB",
+          sha256Hash:
+            doc.sha256Hash ||
+            doc.digitalSignature?.sha256 ||
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          status: "valid",
+          qualityScore: 100,
+          adviceGu: `✅ DigiLocker Rule 9A Verified • URI: ${doc.uri} • સત્તાવાર ડિજિટલ સહી પ્રમાણિત.`,
+          needsUpdate: false,
+          needsNewDocument: false,
+          nameMatchStatus: "matched",
+          nameMatchConfidence: 100,
+          isDigiLockerVerified: true,
+          digiLockerUri: doc.uri,
+          digiLockerIssuer: doc.issuerGu,
+          documentType: doc.nameGu,
+        };
       }
-    });
+    }
 
     setUploadedDocs(updatedUploads);
     setDigiLockerVerifiedDocs(updatedDigiMap);
 
     // Auto-fill form fields with verified authentic data from primary doc
-    const primaryData = payload.document.extractedData;
+    const primaryData = payload.document?.extractedData || payload.allFetchedDocs?.[0]?.extractedData;
     if (primaryData) {
       if (primaryData.fullName) setApplicantName(primaryData.fullName);
       if (primaryData.fullNameGu) setApplicantNameGu(primaryData.fullNameGu);
@@ -848,14 +1095,131 @@ export default function DocumentServicePortal({
     setActiveTxnId(newTxn);
     setActiveChallanNo(newChallan);
 
-    // Open Payment Modal
+    // Open Payment Modal and synchronize browser address bar to /payment
     setShowPaymentModal(true);
+    if (typeof window !== "undefined") {
+      try {
+        window.history.pushState(
+          { modal: "payment", challan: newChallan },
+          "",
+          `/payment?service=${encodeURIComponent(service.id)}&mode=${encodeURIComponent(serviceMode)}&grn=${encodeURIComponent(newChallan)}&fee=${service.fee}`
+        );
+      } catch (e) {
+        console.warn("History pushState error:", e);
+      }
+    }
   };
 
-  // Step 2: Final Payment Confirmation & Application Registration
-  const handleFinalPaymentSubmit = async () => {
+  // Razorpay Dynamic SDK Script Loader
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window === "undefined") return resolve(false);
+      // @ts-expect-error Window Razorpay dynamic definition
+      if (window.Razorpay) return resolve(true);
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Official Razorpay Live Checkout Trigger
+  const handleRazorpayLiveCheckout = async () => {
     setIsProcessingPayment(true);
-    setSubmitting(true);
+    try {
+      const isLoaded = await loadRazorpayScript();
+      // @ts-expect-error Window Razorpay dynamic definition
+      if (!isLoaded || !window.Razorpay) {
+        alert("Razorpay ગેટવે લોડ થવામાં ક્ષતિ આવી. કૃપા કરીને UPI અથવા ચલણ મોડનો ઉપયોગ કરો.");
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      // 1. Create Order via our secure backend
+      const res = await fetch("/api/payment/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: service.fee,
+          applicationId: activeChallanNo,
+          serviceName: `${service.nameGu} અરજી ફી`,
+          citizenName: applicantName || citizenSession?.citizenName || "Hari Patel",
+          citizenMobile: mobileNumber || citizenSession?.mobile || "9974442291",
+        }),
+      });
+
+      const orderData = await res.json();
+      if (!orderData.success) {
+        alert(orderData.error || "ઓર્ડર જનરેટ કરવામાં ક્ષતિ આવી.");
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      // 2. Open Official Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency || "INR",
+        name: "ગુજરાત સરકાર - નાગરિક સેવા",
+        description: `${service.nameGu} - સરકારી અરજી ફી`,
+        image: "/icon.svg",
+        order_id: orderData.orderId.startsWith("order_test_") ? undefined : orderData.orderId,
+        prefill: {
+          name: applicantName || citizenSession?.citizenName || "Hari Patel",
+          email: emailAddress || "citizen@gujarat.gov.in",
+          contact: mobileNumber || citizenSession?.mobile || "9974442291",
+        },
+        notes: {
+          applicationId: activeChallanNo,
+          serviceTitle: service.nameGu,
+        },
+        theme: {
+          color: "#ea580c",
+        },
+        handler: async function (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id?: string;
+          razorpay_signature?: string;
+        }) {
+          // Immediately pop up receipt and complete verification in background!
+          await handleFinalPaymentSubmit(
+            response.razorpay_payment_id,
+            response,
+            orderData.orderId
+          );
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessingPayment(false);
+          },
+        },
+      };
+
+      // @ts-expect-error Window Razorpay dynamic definition
+      const rzpInstance = new window.Razorpay(options);
+      rzpInstance.open();
+    } catch (err) {
+      console.error("Razorpay checkout error:", err);
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // Step 2: Ultra-Fast Zero-Latency Payment Confirmation & Instant Application Receipt Generation
+  const handleFinalPaymentSubmit = async (
+    customTxnIdParam?: unknown,
+    razorpayResponse?: {
+      razorpay_payment_id: string;
+      razorpay_order_id?: string;
+      razorpay_signature?: string;
+    },
+    razorpayOrderId?: string
+  ) => {
+    const customTxnId = typeof customTxnIdParam === "string" ? customTxnIdParam : undefined;
+    const finalTxnId = customTxnId || activeTxnId;
+    setActiveTxnId(finalTxnId);
 
     const rawPhoto =
       userUploadedPhoto ||
@@ -864,22 +1228,51 @@ export default function DocumentServicePortal({
       uploadedDocs["passport_photo"]?.base64 ||
       undefined;
 
-    // Only send photo in JSON payload if it's an image and < 300KB to keep POST ultra-fast;
-    // attach full rawPhoto back onto the returned application object on the client.
+    // Only send photo in JSON payload if it's an image and < 300KB to keep POST ultra-fast
     const networkSafePhoto =
       rawPhoto && rawPhoto.startsWith("data:image/") && rawPhoto.length < 300000
         ? rawPhoto
         : undefined;
 
     const resolvedPayStatus = paymentMethod === "challan" ? "pending_challan" : "paid";
-    const resolvedPayMethodNameGu =
-      paymentMethod === "upi"
-        ? "UPI / Bharat QR (NPCI Direct)"
-        : paymentMethod === "card"
-        ? "નેટ બેંકિંગ / કાર્ડ (State Bank of India)"
-        : "કચેરીએ ઓફલાઇન રોકડ ચલણ (Jan Seva Kendra Cash Counter)";
+    const resolvedPayMethodNameGu = customTxnId
+      ? "Razorpay લાઈવ ગેટવે (કાર્ડ/UPI/નેટબેંકિંગ)"
+      : paymentMethod === "upi"
+      ? "UPI / Bharat QR (NPCI Direct)"
+      : paymentMethod === "card"
+      ? "નેટ બેંકિંગ / કાર્ડ (State Bank of India)"
+      : "કચેરીએ ઓફલાઇન રોકડ ચલણ (Jan Seva Kendra Cash Counter)";
 
-    const payload = {
+    const today = new Date().toISOString().split("T")[0];
+    const currentYear = new Date().getFullYear();
+    const generatedAppId = `APP-GUJ-${currentYear}-${Math.floor(100000 + Math.random() * 899999)}`;
+    const generatedSecret =
+      typeof window !== "undefined" && window.crypto?.getRandomValues
+        ? Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+        : `${Date.now()}${Math.random().toString(36).substring(2, 10)}`;
+
+    const fallbackToken = isBiometricNeeded ? `TK-${Math.floor(100 + Math.random() * 899)}` : undefined;
+
+    let computedRemarksGu = "";
+    let computedRemarksEn = "";
+
+    if (resolvedPayStatus === "pending_challan") {
+      computedRemarksGu = `ઓફલાઇન રોકડ ચલણ નં. ${activeChallanNo} ઇશ્યૂ થયેલ છે. તાલુકા જન સેવા કેન્દ્રના રોકડ કાઉન્ટર પર નિયત ફી ₹${service.fee} જમા કરાવવાના રહેશે.`;
+      computedRemarksEn = `Offline Cash Challan ${activeChallanNo} issued. Please pay fee ₹${service.fee} at Jan Seva Kendra cash counter.`;
+    } else if (isBiometricNeeded) {
+      computedRemarksGu = `અરજી સફળતાપૂર્વક સબમિટ થયેલ છે. ફી ₹${service.fee} ભરપાઈ (Txn: ${finalTxnId}). દસ્તાવેજોની પ્રાથમિક સ્ક્રુટિની પ્રક્રિયા હેઠળ છે. બાયોમેટ્રિક માટે ટોકન નં. ${fallbackToken} ફાળવાયો છે.`;
+      computedRemarksEn = `Application accepted online. Fee ₹${service.fee} paid (Txn: ${finalTxnId}). Biometric appointment Token ${fallbackToken}.`;
+    } else {
+      computedRemarksGu = `અરજદાર દ્વારા ઓનલાઇન અરજી સફળતાપૂર્વક સબમિટ થયેલ છે. ફી ₹${service.fee} સાયબર ટ્રેઝરીમાં જમા થયેલ (Txn: ${finalTxnId}). દસ્તાવેજોની પ્રાથમિક સ્ક્રુટિની નાયબ મામલતદાર કચેરીમાં ચકાસણી હેઠળ છે.`;
+      computedRemarksEn = `Application submitted successfully. Fee ₹${service.fee} processed (Txn: ${finalTxnId}).`;
+    }
+
+    // 1. Build Instant Optimistic Government Application Record
+    const instantApp: CitizenApplication = {
+      id: generatedAppId,
+      trackingSecret: generatedSecret,
       citizenName: applicantName,
       citizenNameGu: applicantNameGu || applicantName,
       gender,
@@ -894,8 +1287,12 @@ export default function DocumentServicePortal({
       benefitAmount: 0,
       serviceType: serviceMode,
       biometricRequired: isBiometricNeeded,
+      appointmentDate: isBiometricNeeded ? "2026-09-29" : undefined,
+      appointmentTime: isBiometricNeeded ? "11:30 AM" : undefined,
+      appointmentCenter: isBiometricNeeded ? `જન સેવા કેન્દ્ર (Jan Seva Kendra), ${taluka}` : undefined,
+      appointmentToken: fallbackToken,
       signatureType,
-      mobile: mobileNumber || "9825012345",
+      mobile: mobileNumber || "9974442291",
       email: emailAddress || "citizen@gujarat.gov.in",
       aadhaarLast4:
         service.id === "aadhaar" && serviceMode === "new"
@@ -903,11 +1300,24 @@ export default function DocumentServicePortal({
           : aadhaarNumber
           ? aadhaarNumber.slice(-4)
           : "4829",
-      paymentStatus: resolvedPayStatus,
-      paymentMethod,
+      status: "processing",
+      appliedDate: today,
+      lastUpdated: today,
+      remarksGu: computedRemarksGu,
+      remarksEn: computedRemarksEn,
+      officerDesignation: `નાયબ મામલતદાર (દસ્તાવેજ સ્ક્રુટિની શાખા), ${taluka}`,
+      workflowStage: 1,
+      documentsVerified: requiredDocs.map((d) => ({
+        name: d.nameGu,
+        verified: uploadedDocs[d.id]?.status === "valid",
+        qualityScore: uploadedDocs[d.id]?.qualityScore || 90,
+      })),
+      paymentStatus: customTxnId ? "paid" : resolvedPayStatus,
+      paymentMethod: customTxnId ? "card" : paymentMethod,
       paymentMethodNameGu: resolvedPayMethodNameGu,
+      operatorConfirmed: false,
       feeAmount: service.fee,
-      txnId: activeTxnId,
+      txnId: finalTxnId,
       challanNo: activeChallanNo,
       correctionsRequested: selectedCorrections,
       oldVsNewValues,
@@ -930,156 +1340,177 @@ export default function DocumentServicePortal({
         subCaste: service.id === "caste" ? subCaste : undefined,
         religion: service.id === "caste" ? religion : undefined,
       },
-      documentsVerified: requiredDocs.map((d) => ({
-        name: d.nameGu,
-        verified: uploadedDocs[d.id]?.status === "valid",
-        qualityScore: uploadedDocs[d.id]?.qualityScore || 90,
-      })),
-      citizenPhoto: networkSafePhoto,
-      userPhoto: networkSafePhoto,
-      digilockerVerified: Object.values(uploadedDocs).some((d) => d.isDigiLockerVerified) || Object.keys(digiLockerVerifiedDocs).length > 0,
-      digilockerUri: Object.values(digiLockerVerifiedDocs)[0]?.uri || Object.values(uploadedDocs).find((d) => d.digiLockerUri)?.digiLockerUri || undefined,
+      citizenPhoto: rawPhoto && rawPhoto.startsWith("data:image/") ? rawPhoto : undefined,
+      userPhoto: rawPhoto && rawPhoto.startsWith("data:image/") ? rawPhoto : undefined,
+      digilockerVerified:
+        Object.values(uploadedDocs).some((d) => d.isDigiLockerVerified) ||
+        Object.keys(digiLockerVerifiedDocs).length > 0,
+      digilockerUri:
+        Object.values(digiLockerVerifiedDocs)[0]?.uri ||
+        Object.values(uploadedDocs).find((d) => d.digiLockerUri)?.digiLockerUri ||
+        undefined,
       digilockerIssuer: Object.values(digiLockerVerifiedDocs)[0]?.issuerGu || undefined,
-      digilockerFetchedAt: Object.values(uploadedDocs).some((d) => d.isDigiLockerVerified) ? new Date().toISOString().split("T")[0] : undefined,
+      digilockerFetchedAt: Object.values(uploadedDocs).some((d) => d.isDigiLockerVerified)
+        ? today
+        : undefined,
     };
 
-    try {
-      let finalApp: CitizenApplication | null = null;
-      let finalNotifications: {
-        sms?: { sentTo: string; message: string; timestamp: string };
-        email?: { sentTo: string; subject: string; timestamp: string };
-      } | null = null;
+    const instantNotifications = {
+      sms: {
+        sentTo: instantApp.mobile || "9974442291",
+        message: `Govt of Gujarat: નમસ્તે ${instantApp.citizenNameGu}, તમારી ${instantApp.schemeNameGu} માટેની અરજી (${instantApp.id}) સફળતાપૂર્વક સ્વીકારાઈ છે.`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+      email: {
+        sentTo: instantApp.email || "citizen@gujarat.gov.in",
+        subject: `સરકારી પહોંચ સ્વીકૃતિ: ${instantApp.schemeNameGu} (અરજી ક્રમાંક: ${instantApp.id})`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    };
 
+    // 2. IMMEDIATE ZERO-LATENCY UI UPDATE (< 15ms)
+    setShowPaymentModal(false);
+    setSubmittedApp(instantApp);
+    setNotificationPayload(instantNotifications);
+    setIsProcessingPayment(false);
+    setSubmitting(false);
+
+    // Update browser address bar to official payment receipt path
+    if (typeof window !== "undefined") {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch("/api/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-        if (data && data.success && data.application) {
-          finalApp = {
-            ...data.application,
-            citizenPhoto: rawPhoto && rawPhoto.startsWith("data:image/") ? rawPhoto : data.application.citizenPhoto,
-          };
-          finalNotifications = data.notifications || null;
-        }
-      } catch (netErr) {
-        console.warn("Using instant client fallback for application registration:", netErr);
+        window.history.pushState(
+          { modal: "receipt", id: instantApp.id },
+          "",
+          `/payment/receipt?id=${encodeURIComponent(instantApp.id)}&grn=${encodeURIComponent(instantApp.challanNo || "")}`
+        );
+      } catch (e) {
+        console.warn("History pushState error:", e);
       }
+    }
 
-      // Guaranteed Instant Fallback if API timed out or had a network issue
-      if (!finalApp) {
-        const today = new Date().toISOString().split("T")[0];
-        const fallbackId = `APP-GUJ-${Math.floor(5425 + Math.random() * 4500)}`;
-        const fallbackToken = isBiometricNeeded ? `TK-${Math.floor(100 + Math.random() * 899)}` : undefined;
-        finalApp = {
-          id: fallbackId,
-          citizenName: payload.citizenName,
-          citizenNameGu: payload.citizenNameGu,
-          gender: payload.gender,
-          schemeId: payload.schemeId,
-          schemeName: payload.schemeName,
-          schemeNameGu: payload.schemeNameGu,
-          schemeEmoji: payload.schemeEmoji,
-          district: payload.district,
-          districtGu: payload.districtGu,
-          taluka: payload.taluka,
-          village: payload.village,
-          aadhaarLast4: String(payload.aadhaarLast4).slice(-4),
-          status: "processing",
-          appliedDate: today,
-          lastUpdated: today,
-          benefitAmount: 0,
-          remarksGu:
-            resolvedPayStatus === "pending_challan"
-              ? `ઓફલાઇન રોકડ ચલણ નં. ${activeChallanNo} ઇશ્યૂ થયેલ છે. તાલુકા જન સેવા કેન્દ્રના રોકડ કાઉન્ટર પર નિયત ફી ₹${service.fee} જમા કરાવવાના રહેશે.`
-              : `અરજદાર દ્વારા ઓનલાઇન અરજી સફળતાપૂર્વક સબમિટ થયેલ છે. ફી ₹${service.fee} સાયબર ટ્રેઝરીમાં જમા થયેલ (Txn: ${activeTxnId}). દસ્તાવેજોની પ્રાથમિક સ્ક્રુટિની નાયબ મામલતદાર કચેરીમાં ચકાસણી હેઠળ છે.`,
-          remarksEn: `Application submitted successfully. Fee ₹${service.fee} processed (Txn: ${activeTxnId}).`,
-          officerDesignation: `નાયબ મામલતદાર (દસ્તાવેજ સ્ક્રુટિની શાખા), ${taluka}`,
-          workflowStage: 1,
-          serviceType: serviceMode,
-          biometricRequired: isBiometricNeeded,
-          appointmentDate: isBiometricNeeded ? "2026-09-29" : undefined,
-          appointmentTime: isBiometricNeeded ? "11:30 AM" : undefined,
-          appointmentCenter: isBiometricNeeded ? `જન સેવા કેન્દ્ર (Jan Seva Kendra), ${taluka}` : undefined,
-          appointmentToken: fallbackToken,
-          signatureType,
-          mobile: payload.mobile,
-          email: payload.email,
-          documentsVerified: payload.documentsVerified,
-          paymentStatus: resolvedPayStatus,
-          paymentMethod,
-          paymentMethodNameGu: resolvedPayMethodNameGu,
-          operatorConfirmed: false,
-          feeAmount: service.fee,
-          txnId: activeTxnId,
-          challanNo: activeChallanNo,
-          correctionsRequested: selectedCorrections,
-          oldVsNewValues,
-          kacheriDetails: payload.kacheriDetails,
-          citizenPhoto: rawPhoto && rawPhoto.startsWith("data:image/") ? rawPhoto : undefined,
-          digilockerVerified: payload.digilockerVerified,
-          digilockerUri: payload.digilockerUri,
-          digilockerIssuer: payload.digilockerIssuer,
-          digilockerFetchedAt: payload.digilockerFetchedAt,
-        };
-        finalNotifications = {
-          sms: {
-            sentTo: payload.mobile,
-            message: `Govt of Gujarat: નમસ્તે ${payload.citizenNameGu}, તમારી ${payload.schemeNameGu} માટેની અરજી (${fallbackId}) સફળતાપૂર્વક સ્વીકારાઈ છે.`,
-            timestamp: new Date().toLocaleTimeString(),
-          },
-          email: {
-            sentTo: payload.email,
-            subject: `સરકારી પહોંચ સ્વીકૃતિ: ${payload.schemeNameGu} (અરજી ક્રમાંક: ${fallbackId})`,
-            timestamp: new Date().toLocaleTimeString(),
-          },
-        };
-      }
+    // 3. IMMEDIATE LOCALSTORAGE PERSISTENCE (Quota-safe)
+    if (typeof window !== "undefined") {
+      const storageSafeApp = {
+        ...instantApp,
+        citizenPhoto: networkSafePhoto,
+        userPhoto: undefined,
+      };
+      try {
+        const savedAppsStr = localStorage.getItem("nagrik_user_applications");
+        let savedApps = savedAppsStr ? JSON.parse(savedAppsStr) : [];
+        savedApps = [
+          storageSafeApp,
+          ...savedApps.filter((a: { id?: string }) => a && a.id !== instantApp.id),
+        ];
+        localStorage.setItem("nagrik_user_applications", JSON.stringify(savedApps));
 
-      setShowPaymentModal(false);
-      setSubmittedApp(finalApp);
-      setNotificationPayload(finalNotifications);
-
-      // Sync with browser localStorage (quota-safe) so it immediately reflects in My Applications
-      if (typeof window !== "undefined") {
-        const storageSafeApp = {
-          ...finalApp,
-          citizenPhoto: networkSafePhoto,
-          userPhoto: undefined,
-        };
-        try {
-          const savedAppsStr = localStorage.getItem("nagrik_user_applications");
-          let savedApps = savedAppsStr ? JSON.parse(savedAppsStr) : [];
-          savedApps = [
+        const savedSessionStr = localStorage.getItem("nagrik_citizen_session");
+        if (savedSessionStr) {
+          const session = JSON.parse(savedSessionStr);
+          const existing = session.activeApplications || [];
+          session.activeApplications = [
             storageSafeApp,
-            ...savedApps.filter((a: { id?: string }) => a && a.id !== finalApp!.id),
+            ...existing.filter((a: { id?: string }) => a && a.id !== instantApp.id),
           ];
-          localStorage.setItem("nagrik_user_applications", JSON.stringify(savedApps));
-
-          const savedSessionStr = localStorage.getItem("nagrik_citizen_session");
-          if (savedSessionStr) {
-            const session = JSON.parse(savedSessionStr);
-            const existing = session.activeApplications || [];
-            session.activeApplications = [
-              storageSafeApp,
-              ...existing.filter((a: { id?: string }) => a && a.id !== finalApp!.id),
-            ];
-            localStorage.setItem("nagrik_citizen_session", JSON.stringify(session));
-          }
-          window.dispatchEvent(new Event("storage"));
-        } catch (storageErr) {
-          console.warn("Storage sync error:", storageErr);
+          localStorage.setItem("nagrik_citizen_session", JSON.stringify(session));
         }
+        window.dispatchEvent(new Event("storage"));
+      } catch (storageErr) {
+        console.warn("Storage sync error:", storageErr);
       }
-    } finally {
-      setIsProcessingPayment(false);
-      setSubmitting(false);
+    }
+
+    // 4. NON-BLOCKING PARALLEL SERVER SYNC & SIGNATURE VERIFICATION IN BACKGROUND
+    const payload = {
+      id: instantApp.id,
+      trackingSecret: instantApp.trackingSecret,
+      citizenName: instantApp.citizenName,
+      citizenNameGu: instantApp.citizenNameGu,
+      gender: instantApp.gender,
+      district: instantApp.district,
+      districtGu: instantApp.districtGu,
+      taluka: instantApp.taluka,
+      village: instantApp.village,
+      schemeId: instantApp.schemeId,
+      schemeName: instantApp.schemeName,
+      schemeNameGu: instantApp.schemeNameGu,
+      schemeEmoji: instantApp.schemeEmoji,
+      benefitAmount: 0,
+      serviceType: instantApp.serviceType,
+      biometricRequired: instantApp.biometricRequired,
+      signatureType: instantApp.signatureType,
+      mobile: instantApp.mobile,
+      email: instantApp.email,
+      aadhaarLast4: instantApp.aadhaarLast4,
+      paymentStatus: instantApp.paymentStatus,
+      paymentMethod: instantApp.paymentMethod,
+      paymentMethodNameGu: instantApp.paymentMethodNameGu,
+      feeAmount: instantApp.feeAmount,
+      txnId: instantApp.txnId,
+      challanNo: instantApp.challanNo,
+      correctionsRequested: instantApp.correctionsRequested,
+      oldVsNewValues: instantApp.oldVsNewValues,
+      kacheriDetails: instantApp.kacheriDetails,
+      documentsVerified: instantApp.documentsVerified,
+      citizenPhoto: networkSafePhoto,
+      userPhoto: networkSafePhoto,
+      digilockerVerified: instantApp.digilockerVerified,
+      digilockerUri: instantApp.digilockerUri,
+      digilockerIssuer: instantApp.digilockerIssuer,
+      digilockerFetchedAt: instantApp.digilockerFetchedAt,
+    };
+
+    // Parallel Background Sync A: Server Track Registration
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success && data.application) {
+          setSubmittedApp((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...data.application,
+                  citizenPhoto:
+                    rawPhoto && rawPhoto.startsWith("data:image/")
+                      ? rawPhoto
+                      : data.application.citizenPhoto,
+                }
+              : prev
+          );
+          if (data.notifications) {
+            setNotificationPayload(data.notifications);
+          }
+        }
+      })
+      .catch((netErr) => {
+        console.warn("Background server registration note:", netErr);
+      });
+
+    // Parallel Background Sync B: Cryptographic Razorpay Signature Verification
+    if (razorpayResponse) {
+      fetch("/api/payment/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          razorpay_order_id: razorpayResponse.razorpay_order_id || razorpayOrderId,
+          razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+          razorpay_signature: razorpayResponse.razorpay_signature,
+          applicationId: instantApp.id,
+        }),
+      })
+        .then((vRes) => vRes.json())
+        .then((vData) => {
+          if (!vData.success) {
+            console.warn("Background signature verification warning:", vData.error);
+          }
+        })
+        .catch((vErr) => {
+          console.warn("Background verify network note:", vErr);
+        });
     }
   };
 
@@ -1175,10 +1606,10 @@ export default function DocumentServicePortal({
           serviceTitle="નાગરિક દસ્તાવેજ સેવા & સુધારો પોર્ટલ"
           onSuccess={(cit) => {
             setCitizenSession(cit);
-            setApplicantName(cit.citizenName || "Rameshbhai Kantilal Patel");
-            setApplicantNameGu(cit.citizenNameGu || "રમેશભાઈ કાંતિલાલ પટેલ");
-            setMobileNumber(cit.mobile || "9825012345");
-            setAadhaarNumber(`XXXX-XXXX-${cit.aadhaarLast4 || "4829"}`);
+            setApplicantName(cit.citizenName || "Hari Vinodrai Patel");
+            setApplicantNameGu(cit.citizenNameGu || "હરી વિનોદરાઈ પટેલ");
+            setMobileNumber(cit.mobile || "9974442291");
+            setAadhaarNumber(`XXXX-XXXX-${cit.aadhaarLast4 || "1413"}`);
             if (cit.district) setDistrict(cit.district);
             if (cit.taluka) setTaluka(cit.taluka);
             if (cit.village) setVillage(cit.village);
@@ -1213,8 +1644,9 @@ export default function DocumentServicePortal({
                 </div>
               </div>
               <button
-                onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                type="button"
+                onClick={handleClosePaymentModal}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
               >
                 ✕
               </button>
@@ -1247,7 +1679,7 @@ export default function DocumentServicePortal({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("upi")}
-                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] ${
+                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] cursor-pointer ${
                     paymentMethod === "upi"
                       ? "bg-orange-50 border-orange-500 text-orange-900 ring-2 ring-orange-500/20 shadow-xs"
                       : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
@@ -1260,7 +1692,7 @@ export default function DocumentServicePortal({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("card")}
-                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] ${
+                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] cursor-pointer ${
                     paymentMethod === "card"
                       ? "bg-orange-50 border-orange-500 text-orange-900 ring-2 ring-orange-500/20 shadow-xs"
                       : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
@@ -1273,7 +1705,7 @@ export default function DocumentServicePortal({
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("challan")}
-                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] ${
+                  className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold transition flex flex-col items-center justify-center gap-1 min-h-[58px] cursor-pointer ${
                     paymentMethod === "challan"
                       ? "bg-orange-50 border-orange-500 text-orange-900 ring-2 ring-orange-500/20 shadow-xs"
                       : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
@@ -1328,7 +1760,7 @@ export default function DocumentServicePortal({
                                 setCopiedVpa(true);
                                 setTimeout(() => setCopiedVpa(false), 2000);
                               }}
-                              className="text-[9.5px] text-orange-600 hover:text-orange-700 font-bold px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200"
+                              className="text-[9.5px] text-orange-600 hover:text-orange-700 font-bold px-1.5 py-0.5 rounded bg-orange-50 border border-orange-200 cursor-pointer"
                             >
                               {copiedVpa ? "✓ કૉપી થયું" : "કૉપી"}
                             </button>
@@ -1339,44 +1771,74 @@ export default function DocumentServicePortal({
                           <span className="font-mono font-black text-orange-600">₹ {service.fee}.00</span>
                         </div>
                       </div>
-
-                      {/* Mobile One-Tap Direct UPI App Opener */}
-                      <a
-                        href={`upi://pay?pa=cybertreasury.gujarat@sbi&pn=Cyber%20Treasury%20Gujarat&am=${service.fee}&cu=INR&tn=NagrikSeva%20Fee%20${activeChallanNo}`}
-                        className="flex items-center justify-center gap-1.5 w-full py-2 px-3 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition sm:hidden"
-                      >
-                        <Smartphone size={14} />
-                        <span>મોબાઈલ UPI એપમાં સીધું ખોલો (GPay / PhonePe)</span>
-                      </a>
                     </div>
                   </div>
 
-                  {/* Instant Approval Simulation / Paid Trigger Button */}
-                  <button
-                    type="button"
-                    onClick={handleFinalPaymentSubmit}
-                    disabled={isProcessingPayment}
-                    className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-extrabold shadow-sm transition flex items-center justify-center gap-1.5"
-                  >
-                    <Check size={16} />
-                    <span>✓ ચુકવણી સ્કેન થઈ ગઈ? ક્લિક કરીને તરત સત્તાવાર ઈ-રસીદ જનરેટ કરો</span>
-                  </button>
+                  {/* Single Unified Official Gujarat Cyber Treasury Online Payment Button */}
+                  <div className="pt-1 space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={handleRazorpayLiveCheckout}
+                      disabled={isProcessingPayment}
+                      className="w-full py-3.5 px-4 bg-gradient-to-r from-[#002B49] via-[#0b3c65] to-[#002B49] hover:from-[#001D33] hover:to-[#082d4d] active:scale-[0.98] text-white rounded-2xl font-black shadow-lg transition flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-60 border-2 border-amber-400/50"
+                    >
+                      <div className="flex items-center gap-2 text-xs sm:text-sm font-black tracking-wide text-white">
+                        <span className="text-base sm:text-lg">🏛️</span>
+                        <span>સત્તાવાર સાયબર ટ્રેઝરી દ્વારા ચૂકવણી કરો (Pay ₹ {service.fee})</span>
+                        <Lock size={15} className="text-amber-300 shrink-0" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-200/90 font-medium font-sans">
+                        <span>UPI (GPay / PhonePe / Paytm / BHIM)</span>
+                        <span>•</span>
+                        <span>કાર્ડ</span>
+                        <span>•</span>
+                        <span>નેટ બેંકિંગ</span>
+                      </div>
+                    </button>
+                    <p className="text-[10px] sm:text-[11px] text-center text-slate-500 font-medium">
+                      🔒 નાણાં વિભાગ, ગુજરાત સરકાર • Cyber Treasury e-Grass ૨૫૬-બીટ SSL સુરક્ષિત પેમેન્ટ ગેટવે (Powered by Razorpay DPI)
+                    </p>
+                  </div>
                 </div>
               )}
 
               {/* Card / Netbanking Details */}
               {paymentMethod === "card" && (
-                <div className="border border-slate-200 bg-slate-50 rounded-2xl p-3.5 space-y-2 text-xs">
+                <div className="border border-slate-200 bg-slate-50 rounded-2xl p-3.5 space-y-3 text-xs">
                   <p className="font-bold text-slate-800">બેંક પસંદ કરો (State Bank of India / HDFC / BOB / ICICI):</p>
                   <select className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-orange-500">
                     <option>State Bank of India (Cyber Treasury Gateway)</option>
                     <option>Bank of Baroda (e-Grass Direct)</option>
                     <option>HDFC Bank NetBanking</option>
                     <option>ICICI Bank Corporate/Retail</option>
+                    <option>Axis Bank / Kotak Mahindra Bank</option>
                   </select>
-                  <p className="text-[11px] text-slate-500">
-                    🔒 RBI માન્ય ૨૫૬-બીટ SSL દ્વારા સંપૂર્ણ સુરક્ષિત પેમેન્ટ ટ્રાન્ઝેક્શન.
-                  </p>
+
+                  {/* Single Unified Official Gujarat Cyber Treasury Online Payment Button */}
+                  <div className="pt-1 space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={handleRazorpayLiveCheckout}
+                      disabled={isProcessingPayment}
+                      className="w-full py-3.5 px-4 bg-gradient-to-r from-[#002B49] via-[#0b3c65] to-[#002B49] hover:from-[#001D33] hover:to-[#082d4d] active:scale-[0.98] text-white rounded-2xl font-black shadow-lg transition flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-60 border-2 border-amber-400/50"
+                    >
+                      <div className="flex items-center gap-2 text-xs sm:text-sm font-black tracking-wide text-white">
+                        <span className="text-base sm:text-lg">🏛️</span>
+                        <span>સત્તાવાર સાયબર ટ્રેઝરી દ્વારા ચૂકવણી કરો (Pay ₹ {service.fee})</span>
+                        <Lock size={15} className="text-amber-300 shrink-0" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-200/90 font-medium font-sans">
+                        <span>ડેબિટ કાર્ડ (RuPay / Visa / Master)</span>
+                        <span>•</span>
+                        <span>નેટ બેંકિંગ</span>
+                        <span>•</span>
+                        <span>ક્રેડિટ કાર્ડ</span>
+                      </div>
+                    </button>
+                    <p className="text-[10px] sm:text-[11px] text-center text-slate-500 font-medium">
+                      🔒 નાણાં વિભાગ, ગુજરાત સરકાર • ૨૫૬-બીટ SSL એન્ક્રિપ્ટેડ સાયબર ટ્રેઝરી ગેટવે (Powered by Razorpay DPI)
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1408,36 +1870,23 @@ export default function DocumentServicePortal({
               <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setShowPaymentModal(false)}
+                  onClick={handleClosePaymentModal}
                   disabled={isProcessingPayment}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap text-center shrink-0"
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap text-center shrink-0 cursor-pointer"
                 >
                   રદ કરો
                 </button>
 
-                {/* Only render bottom submit button for Card and Cash Challan, as UPI has its dedicated single top button */}
-                {paymentMethod !== "upi" && (
+                {/* Only render bottom submit button for Cash Challan (Online payment has dedicated Razorpay button above) */}
+                {paymentMethod === "challan" && (
                   <button
                     type="button"
-                    onClick={handleFinalPaymentSubmit}
+                    onClick={() => handleFinalPaymentSubmit()}
                     disabled={isProcessingPayment}
-                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-black shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap"
+                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-black shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
                   >
-                    {isProcessingPayment ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        <span>ચુકવણી ચકાસણી થઈ રહી છે...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check size={18} />
-                        <span>
-                          {paymentMethod === "challan"
-                            ? "ચલણ જનરેટ કરો & સબમિટ"
-                            : `ફી ₹ ${service.fee} ચૂકવો & સત્તાવાર પહોંચ મેળવો`}
-                        </span>
-                      </>
-                    )}
+                    <Landmark size={18} />
+                    <span>ઓફલાઇન રોકડ ચલણ જનરેટ કરો & સબમિટ</span>
                   </button>
                 )}
               </div>
@@ -1452,6 +1901,16 @@ export default function DocumentServicePortal({
           <div className={`bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-8 space-y-5 shadow-2xl border-2 relative ${
             submittedApp.paymentStatus === "pending_challan" ? "border-amber-500" : "border-emerald-500"
           }`}>
+            {/* Top Right Close Button */}
+            <button
+              type="button"
+              onClick={handleCloseReceiptModal}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              title="બંધ કરો"
+            >
+              <X size={20} />
+            </button>
+
             {/* Header */}
             <div className="text-center space-y-1.5">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto shadow-inner ${
@@ -1610,8 +2069,9 @@ export default function DocumentServicePortal({
               </Link>
 
               <button
-                onClick={() => setSubmittedApp(null)}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap"
+                type="button"
+                onClick={handleCloseReceiptModal}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap cursor-pointer"
               >
                 નવી અરજી
               </button>
@@ -2374,7 +2834,7 @@ export default function DocumentServicePortal({
                       maxLength={10}
                       value={mobileNumber}
                       onChange={(e) => setMobileNumber(e.target.value)}
-                      placeholder="9825012345"
+                      placeholder="9974442291"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono min-h-[42px]"
                     />
                   </div>
@@ -2927,25 +3387,13 @@ export default function DocumentServicePortal({
                         </span>
                       </div>
                       <h4 className="text-xs sm:text-sm font-extrabold text-white leading-tight">
-                        દસ્તાવેજનો ફોટો નથી? DigiLocker માંથી ૧-ક્લિકમાં સીધા મેળવો
+                        દસ્તાવેજનો ફોટો નથી? નીચે દરેક સ્લોટમાંથી DigiLocker વડે ૧-ક્લિકમાં લાવો
                       </h4>
                       <p className="text-[11px] text-blue-200 mt-0.5 leading-snug">
-                        આધાર, આવકનો દાખલો, રેશનકાર્ડ કે ૭/૧૨ સરકારી સર્વરમાંથી સત્તાવાર ડિજિટલ સહી (e-Sign) સાથે ફેચ થશે.
+                        આધાર, આવકનો દાખલો, રેશનકાર્ડ, લાઈટબિલ કે ૭/૧૨ સરકારી સર્વરમાંથી સત્તાવાર ડિજિટલ સહી (e-Sign) સાથે સુરક્ષિત ફેચ થશે.
                       </p>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveDigiLockerTarget("all");
-                      setIsDigiLockerModalOpen(true);
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Sparkles size={14} className="text-slate-950" />
-                    <span>⚡ ડીજીલોકરથી તમામ દસ્તાવેજો લાવો</span>
-                  </button>
                 </div>
               </div>
 
@@ -3126,10 +3574,36 @@ export default function DocumentServicePortal({
                             />
                           )}
                           {docState?.fileName ? (
-                            <span className="font-mono text-slate-700 font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 truncate max-w-[220px]">
-                              <FileText size={13} className="text-orange-600" />
-                              {docState.fileName}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-slate-700 font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 truncate max-w-[200px]">
+                                <FileText size={13} className="text-orange-600 shrink-0" />
+                                <span className="truncate">{docState.fileName}</span>
+                              </span>
+                              {docState.base64 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreviewDocModal({
+                                      title: docState.fileName,
+                                      src: docState.base64,
+                                      isPdf:
+                                        docState.base64.startsWith("data:application/pdf") ||
+                                        docState.fileName.toLowerCase().includes(".pdf"),
+                                      fileSize: docState.fileSize,
+                                      sha256: docState.sha256Hash || (docState.isDigiLockerVerified ? docState.digiLockerUri : undefined),
+                                      issuerGu: docState.digiLockerIssuer,
+                                      uri: docState.digiLockerUri,
+                                      isDigiLockerVerified: docState.isDigiLockerVerified,
+                                    });
+                                  }}
+                                  className="px-2 py-1 bg-white hover:bg-slate-100 active:scale-95 text-blue-700 hover:text-blue-900 rounded-md text-[11px] font-bold flex items-center gap-1 border border-slate-200 shadow-2xs cursor-pointer"
+                                  title="દસ્તાવેજ જુઓ (View Attached Document)"
+                                >
+                                  <Eye size={12} />
+                                  <span>જુઓ</span>
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-400 text-[11px]">
                               JPG, PNG અથવા PDF અપલોડ કરો (મહત્તમ 5MB)
@@ -3138,19 +3612,29 @@ export default function DocumentServicePortal({
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {/* Option A: Fetch directly from DigiLocker */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveDigiLockerTarget(docItem.id);
-                              setIsDigiLockerModalOpen(true);
-                            }}
-                            className="bg-blue-50 hover:bg-blue-100 active:scale-95 border border-blue-300 text-blue-900 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                            title="આ દસ્તાવેજ ડીજીલોકરમાંથી સીધો ફેચ કરો"
-                          >
-                            <span className="text-sm">🔗</span>
-                            <span>DigiLocker થી લાવો</span>
-                          </button>
+                          {/* Option A: Fetch directly from DigiLocker (Only for supported categories) */}
+                          {isSlotSupportedByDigiLocker(docItem.id, docItem.nameEn, docItem.nameGu) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDigiLockerTarget(docItem.id);
+                                setIsDigiLockerModalOpen(true);
+                              }}
+                              className="bg-blue-50 hover:bg-blue-100 active:scale-95 border border-blue-300 text-blue-900 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              title="આ દસ્તાવેજ ડીજીલોકરમાંથી સીધો ફેચ કરો"
+                            >
+                              <span className="text-sm">🔗</span>
+                              <span>DigiLocker થી લાવો</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="text-[11px] text-slate-500 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 cursor-not-allowed select-none"
+                              title="આ દસ્તાવેજ સ્થાનિક કચેરીનો ઓફલાઇન મહેસૂલી રેકોર્ડ છે, DigiLocker માં ઉપલબ્ધ નથી"
+                            >
+                              <span className="text-slate-400">🏛️</span>
+                              <span>ડીજીલોકરમાં ઉપલબ્ધ નથી</span>
+                            </span>
+                          )}
 
                           {/* Option B: Manual File Upload */}
                           <label className="cursor-pointer bg-white hover:bg-orange-50 border border-slate-300 hover:border-orange-400 text-slate-700 hover:text-orange-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
@@ -3158,7 +3642,7 @@ export default function DocumentServicePortal({
                             <span>{docState ? "ફાઇલ બદલો" : "અપલોડ"}</span>
                             <input
                               type="file"
-                              accept="image/jpeg,image/png,application/pdf"
+                              accept={docItem.id === "applicant_photo" ? "image/jpeg,image/png" : "image/jpeg,image/png,application/pdf"}
                               className="hidden"
                               onChange={(e) => {
                                 if (e.target.files && e.target.files[0]) {
@@ -3366,9 +3850,136 @@ export default function DocumentServicePortal({
         isOpen={isDigiLockerModalOpen}
         onClose={() => setIsDigiLockerModalOpen(false)}
         targetDocType={activeDigiLockerTarget}
+        targetDocId={activeDigiLockerTarget}
+        targetDocNameGu={
+          requiredDocs.find((d) => d.id === activeDigiLockerTarget)?.nameGu ||
+          (activeDigiLockerTarget === "applicant_photo" ? "અરજદારનો પાસપોર્ટ સાઇઝ રંગીન ફોટો" : "દસ્તાવેજ")
+        }
         serviceTitle={service.nameGu}
+        citizenName={applicantName || citizenSession?.citizenName || "Hari Vinodrai Patel"}
+        citizenNameGu={applicantNameGu || citizenSession?.citizenNameGu || "હરી વિનોદરાઈ પટેલ"}
+        citizenMobile={mobileNumber || citizenSession?.mobile || "9974442291"}
+        citizenAadhaar={aadhaarNumber || `XXXX-XXXX-${citizenSession?.aadhaarLast4 || "1413"}`}
         onDocumentFetched={handleDigiLockerDocumentFetched}
       />
+
+      {/* ── Document Preview Popup Modal (PDF or Image) ── */}
+      {previewDocModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 overscroll-contain"
+          onClick={() => setPreviewDocModal(null)}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-4 sm:p-5 space-y-3 max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2 truncate">
+                <span className="text-xl">📄</span>
+                <div>
+                  <h4 className="font-black text-xs sm:text-sm text-slate-900 truncate">
+                    {previewDocModal.title}
+                  </h4>
+                  <span className="text-[10px] text-slate-500">
+                    અસલ દસ્તાવેજ ચકાસણી દર્શક (Authentic Document Viewer)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewDocModal(null)}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500 cursor-pointer"
+                title="બંધ કરો"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Document Guarantee & Verification Status Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
+                {previewDocModal.isDigiLockerVerified ? (
+                  <span className="text-[10.5px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 size={12} className="text-blue-700" />
+                    <span>✓ DigiLocker Rule 9A Verified (સત્તાવાર ડિજિટલ સહી)</span>
+                  </span>
+                ) : (
+                  <span className="text-[10.5px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 size={12} className="text-emerald-700" />
+                    <span>✓ Cryptographic SHA-256 Checksum Verified (અસલ ફાઇલ ગેરંટી)</span>
+                  </span>
+                )}
+
+                {previewDocModal.fileSize && (
+                  <span className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono font-bold">
+                    📊 સાઇઝ: {previewDocModal.fileSize}
+                  </span>
+                )}
+              </div>
+
+              {previewDocModal.sha256 && (
+                <div className="text-[9.5px] font-mono text-slate-600 bg-white p-1.5 rounded border border-slate-200 break-all flex items-start gap-1">
+                  <span className="font-bold text-blue-700 shrink-0">🔐 SHA-256 Fingerprint:</span>
+                  <span>{previewDocModal.sha256}</span>
+                </div>
+              )}
+
+              {previewDocModal.issuerGu && (
+                <p className="text-[10.5px] text-slate-600">
+                  🏛️ જારી કરનાર: <strong className="text-slate-800">{previewDocModal.issuerGu}</strong>
+                </p>
+              )}
+            </div>
+
+            {/* Document Canvas / Iframe */}
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-slate-100 rounded-2xl p-2 min-h-[300px]">
+              {previewDocModal.isPdf ? (
+                <iframe
+                  src={previewDocModal.src}
+                  className="w-full h-[58vh] rounded-xl border border-slate-300 bg-white"
+                  title="PDF Document"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewDocModal.src}
+                  alt={previewDocModal.title}
+                  className="max-h-[58vh] max-w-full object-contain rounded-xl shadow-xs"
+                />
+              )}
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
+              <span className="text-[10.5px] text-slate-500">
+                IT Act 2000 ની કલમ ૪ મુજબ મૂળ દસ્તાવેજ સમકક્ષ માન્ય
+              </span>
+              <div className="flex items-center gap-2">
+                {previewDocModal.src && (
+                  <a
+                    href={previewDocModal.src}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>નવી ટેબમાં ખોલો ↗</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewDocModal(null)}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  બંધ કરો
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

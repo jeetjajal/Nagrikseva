@@ -4,6 +4,7 @@ import { queryApplications, CitizenApplication } from "@/lib/large-datasets";
 import { analyzeApplicationSla } from "@/lib/admin-hierarchy-data";
 import { ChatHistory, DocumentVerificationReport } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
+import { extractClientIp, checkRateLimit } from "@/lib/rate-limit";
 
 interface CitizenContext {
   name?: string;
@@ -428,28 +429,29 @@ function getLocalFallbackReply(query: string, lang = "gu", citizenContext?: Citi
     const localizedBenefits = getLocalizedSchemeBenefits(matchedScheme, lang);
 
     const reply =
-      lang === "mr"
-        ? `${citizenGreeting}📋 **${schemeDisplayName}**\n\n` +
-          `${actMap[matchedScheme.id] || "🏛️ **अधिकृत प्राधिकरण:** केंद्र व राज्य शासन कल्याणकारी नियम"}\n\n` +
-          `📌 **मुख्य सरकारी लाभ:**\n` +
-          localizedBenefits.map((b) => `• ${b}`).join("\n") +
-          `\n\n🎯 **पात्रता निकष:**\n` +
-          eligList.join("\n") +
-          `\n\n📄 **आवश्यक कागदपत्रे (Checklist):**\n` +
-          matchedScheme.documents.map((d) => `• ${d}`).join("\n") +
-          `\n\n⏱️ **नागरिक सनद SLA:** १ ते ७ कामाचे दिवस\n` +
-          `🌐 **अधिकृत पोर्टल:** [${matchedScheme.applicationUrl}](${matchedScheme.applicationUrl})`
-        : `${citizenGreeting}📋 **${schemeDisplayName}**\n\n` +
-          `${actMap[matchedScheme.id] || "🏛️ **સત્તાવાર સત્તા:** ગુજરાત અને ભારત સરકાર કલ્યાણકારી નિયમો"}\n\n` +
-          `📌 **મુખ્ય સરકારી લાભો:**\n` +
-          localizedBenefits.map((b) => `• ${b}`).join("\n") +
-          `\n\n🎯 **પાત્રતા નિયમો:**\n` +
-          eligList.join("\n") +
-          `\n\n📄 **જરૂરી આધાર પુરાવા (Checklist):**\n` +
-          matchedScheme.documents.map((d) => `• ${d}`).join("\n") +
-          `\n\n⏱️ **નાગરિક અધિકારપત્ર SLA:** ૧ થી ૭ કામકાજી દિવસ\n` +
-          `🌐 **સત્તાવાર પોર્ટલ:** [${matchedScheme.applicationUrl}](${matchedScheme.applicationUrl})`;
-
+    lang === "mr"
+      ? `${citizenGreeting}📋 **${schemeDisplayName}**\n\n` +
+        `${actMap[matchedScheme.id] || "🏛 **अधिकृत प्राधिकरण:** केंद्र व राज्य शासन"}\n\n` +
+        `📌 **मुख्य सरकारी लाभ:**\n` +
+        localizedBenefits.map((b) => `• ${b}`).join("\n") +
+        `\n\n🎯 **पात्रता निकष:**\n` +
+        eligList.join("\n") +
+        `\n\n📄 **आवश्यक कागदपत्रे (Checklist):**\n` +
+        matchedScheme.documents.map((d) => `• ${d}`).join("\n") +
+        `\n\n⏱ **नागरिक सनद SLA:** ${matchedScheme.officialSlaDays || 15} दिवस (अंदाजित वेळ: ${matchedScheme.planningEstimateDays || "3-5 दिवस"})\n` +
+        `🏢 **अंमलबजावणी प्राधिकरण / विभाग:** ${matchedScheme.implementingAuthority || matchedScheme.ministry}\n` +
+        `🌐 **अधिकृत पोर्टल:** [${matchedScheme.applicationUrl}](${matchedScheme.applicationUrl})`
+      : `${citizenGreeting}📋 **${schemeDisplayName}**\n\n` +
+        `${actMap[matchedScheme.id] || "🏛 **સત્તાવાર સત્તા:** ગુજરાત અને ભારત સરકાર"}\n\n` +
+        `📌 **મુખ્ય સરકારી લાભો:**\n` +
+        localizedBenefits.map((b) => `• ${b}`).join("\n") +
+        `\n\n🎯 **પાત્રતા નિયમો:**\n` +
+        eligList.join("\n") +
+        `\n\n📄 **જરૂરી આધાર પુરાવા (Checklist):**\n` +
+        matchedScheme.documents.map((d) => `• ${d}`).join("\n") +
+        `\n\n⏱ **નાગરિક અધિકારપત્ર SLA:** ${matchedScheme.officialSlaDays || 15} દિવસ (અંદાજિત સમય: ${matchedScheme.planningEstimateDays || "3-5 દિવસ"})\n` +
+        `🏢 **અમલીકરણ સત્તા / વિભાગ:** ${matchedScheme.implementingAuthority || matchedScheme.ministry}\n` +
+        `🌐 **સત્તાવાર પોર્ટલ:** [${matchedScheme.applicationUrl}](${matchedScheme.applicationUrl})`;
     return {
       reply,
       actionButtons: generateActionButtons(matchedScheme.name + " " + matchedScheme.nameGu, lang),
@@ -717,6 +719,24 @@ function analyzeDocumentReport(fileName: string, _mimeType: string, lang = "gu")
 export async function POST(req: NextRequest) {
   let requestLanguage = "gu";
   try {
+    // IP Rate Limiting (Prevents Token Exhaustion & Bot Abuse: Max 30 req/min)
+    const clientIp = extractClientIp(req);
+    const rateCheck = checkRateLimit(clientIp, {
+      keyPrefix: "chat-ai",
+      windowMs: 60 * 1000,
+      maxRequests: 30,
+    });
+
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `AI સહાયક પર ખૂબ ઝડપી મેસેજ આવી રહ્યા છે. કૃપા કરીને ${rateCheck.retryAfterSeconds} સેકન્ડ પછી નવો પ્રશ્ન પૂછો.`,
+          code: "RATE_LIMIT_EXCEEDED",
+        },
+        { status: 429, headers: { "Retry-After": String(rateCheck.retryAfterSeconds) } }
+      );
+    }
+
     const {
       message,
       history,
